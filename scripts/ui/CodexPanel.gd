@@ -34,7 +34,7 @@ func _ready() -> void:
 	title.size_flags_horizontal = SIZE_EXPAND_FILL
 	header.add_child(title)
 	var close := Button.new()
-	close.text = "返回  ·  Esc"
+	close.text = "返回" if GameInput.touch_controls_active else "返回  ·  Esc"
 	close.pressed.connect(func(): closed.emit())
 	header.add_child(close)
 	var navigation := HBoxContainer.new()
@@ -133,9 +133,14 @@ func build_entries() -> void:
 		add_entry(2, enemy.display_name, "红 / 绿 / 蓝均可能",
 			role + "\n\n基础生命  %.0f\n移动速度  %.0f\n接触伤害  %.1f 心\n经验  %.1f    金币  %d\n%s\n\n颜色随机，与形状和职责独立。生命只在新刷出时随时间增长。" % [enemy.max_health, enemy.move_speed, enemy.contact_damage, enemy.xp_reward, enemy.gold_reward, appearance], accent)
 	var rules := RunState.color_rules
-	add_entry(3, "颜色克制", "红 → 绿 → 蓝 → 红", "红色克制绿色，绿色克制蓝色，蓝色克制红色。\n\n克制伤害 ×%.1f，同色 ×%.1f，逆向 ×%.1f。\n右键轻点切换颜色；按住并横拖选择颜色。每次切换消耗 1 能量。" % [rules.advantage_multiplier, rules.same_multiplier, rules.reverse_multiplier], Color(0.5, 0.85, 1))
+	var color_input_hint := "右键轻点切换颜色；按住并横拖选择颜色。"
+	if GameInput.touch_controls_active:
+		color_input_hint = "轻点切换颜色；长按查看，左右滑动选择颜色。"
+	add_entry(3, "颜色克制", "红 → 绿 → 蓝 → 红", "红色克制绿色，绿色克制蓝色，蓝色克制红色。\n\n克制伤害 ×%.1f，同色 ×%.1f，逆向 ×%.1f。\n%s每次切换消耗 1 能量。" % [rules.advantage_multiplier, rules.same_multiplier, rules.reverse_multiplier, color_input_hint], Color(0.5, 0.85, 1))
 	add_entry(3, "成长与拾取", "升级 / 宝箱 / 商人", "前四次升级需要 6 / 12 / 20 / 30 经验。\n金币与经验靠近后吸收；商人到达时会收集地面资源。\n遗物出现后可拾取或丢弃，5 秒未选择自动拾取。暂停时停止读条。", Color(0.5, 0.85, 1))
-	add_entry(3, "技能路线", "19 条路线 · 76 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n按 Esc 查看本局技能与遗物。", Color(0.5, 0.85, 1))
+	var pause_hint := "点右上角暂停查看本局技能与遗物。" if GameInput.touch_controls_active else \
+		"按 Esc 查看本局技能与遗物。"
+	add_entry(3, "技能路线", "19 条路线 · 76 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n%s" % pause_hint, Color(0.5, 0.85, 1))
 
 func add_entry(group: int, title: String, subtitle: String, body: String, accent: Color) -> void:
 	entries.append({"category": group, "title": title, "subtitle": subtitle, "body": body, "accent": Color(clampf(accent.r, 0, 1), clampf(accent.g, 0, 1), clampf(accent.b, 0, 1)).lerp(Color.WHITE, 0.30)})

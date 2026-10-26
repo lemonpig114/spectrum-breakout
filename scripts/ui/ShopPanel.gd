@@ -368,8 +368,11 @@ func _draw() -> void:
 			Color(color.r, color.g, color.b, alpha)
 		)
 
+	var shop_hint := "点击购买 · 1-9 购买 · U 捐款升级 · R 重掷 · H 回复 · Esc 离开"
+	if GameInput.touch_controls_active:
+		shop_hint = "点按商品购买 · 点按下方选项操作"
 	_draw_text_centered(
-		"点击购买 · 1-9 购买 · U 捐款升级 · R 重掷 · H 回复 · Esc 离开",
+		shop_hint,
 		size.y - 30.0,
 		13,
 		Color(1.0, 1.0, 1.0, 0.38 * ease)
@@ -664,7 +667,8 @@ func _draw_buttons(offset: float, alpha: float) -> void:
 		reroll_text = "免费重掷 · 剩余 %d" % _free_rerolls
 	_draw_button(rects[2], reroll_text, _hover_button == 2, true, alpha, GOLD_DIM)
 
-	_draw_button(rects[3], "离开 (Esc)", _hover_button == 3, true, alpha, Color(0.7, 0.7, 0.75, 1.0))
+	_draw_button(rects[3], "离开" if GameInput.touch_controls_active else "离开 (Esc)",
+		_hover_button == 3, true, alpha, Color(0.7, 0.7, 0.75, 1.0))
 
 
 func _draw_button(

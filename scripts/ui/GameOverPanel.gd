@@ -110,8 +110,8 @@ func _draw() -> void:
 	)
 
 	var buttons := _button_rects()
-	_draw_button(buttons[0], 0, "再来一局", "R", ease)
-	_draw_button(buttons[1], 1, "返回主界面", "Esc", ease)
+	_draw_button(buttons[0], 0, "再来一局", "" if GameInput.touch_controls_active else "R", ease)
+	_draw_button(buttons[1], 1, "返回主界面", "" if GameInput.touch_controls_active else "Esc", ease)
 
 	_text_centered(
 		"再来一局沿用当前机体，进程不会保存",
@@ -137,22 +137,23 @@ func _draw_button(rect: Rect2, index: int, label: String, hint: String, alpha: f
 
 	draw_string(
 		_bold_font if _bold_font != null else _font,
-		Vector2(rect.position.x, rect.position.y + 27.0),
+		Vector2(rect.position.x, rect.position.y + (36.0 if hint.is_empty() else 27.0)),
 		label,
 		HORIZONTAL_ALIGNMENT_CENTER,
 		rect.size.x,
 		18,
 		Color(1.0, 1.0, 1.0, 0.95 * alpha)
 	)
-	draw_string(
-		_font,
-		Vector2(rect.position.x, rect.position.y + 43.0),
-		hint,
-		HORIZONTAL_ALIGNMENT_CENTER,
-		rect.size.x,
-		9,
-		Color(accent.r, accent.g, accent.b, 0.62 * alpha)
-	)
+	if not hint.is_empty():
+		draw_string(
+			_font,
+			Vector2(rect.position.x, rect.position.y + 43.0),
+			hint,
+			HORIZONTAL_ALIGNMENT_CENTER,
+			rect.size.x,
+			9,
+			Color(accent.r, accent.g, accent.b, 0.62 * alpha)
+		)
 
 
 func _layout() -> Dictionary:

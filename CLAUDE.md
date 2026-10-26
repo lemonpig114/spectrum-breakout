@@ -8,9 +8,9 @@ Godot **4.4.1** (Forward Plus, Windows) 2D minimalist neon top-down arena surviv
 Geometry remains procedural; round 9 adds a shared generated radial texture and pooled local energy-veil shader (no external image assets). The look depends on the
 black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow. `rendering/viewport/hdr_2d=true`.
 
-- **Not a git repository.** Do not delete files destructively; read `HANDOFF.md` before changing behavior.
-- Possible later **Android / TapTap** port: keep input behind `GameInput`, avoid platform branches in gameplay, and
-  stay within the performance budget. Mobile plan lives in `plan.md` §17.
+- Git repository with public remote `lemonpig114/spectrum-breakout`. Do not delete files destructively; read `HANDOFF.md` before changing behavior.
+- Android touch input first pass is live: floating joystick and touch color gestures live in `MobileControls`, with
+  movement state in `GameInput`; phone aiming stays automatic. Test/export notes: `docs/MOBILE.md` and `plan.md` §17.
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
 - 19 skill branches × 4 tiers = **76 nodes**, **51 relics**, shop, luck/chests, manual pause, altars, audio.
 - Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.

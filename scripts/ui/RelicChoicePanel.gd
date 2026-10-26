@@ -71,7 +71,7 @@ func _label(parent: Node, font_size: int, tint: Color) -> Label:
 func _button(parent: Node, title: String, take: bool) -> Button:
 	var button := Button.new()
 	button.text = title
-	button.custom_minimum_size = Vector2(40, 23)
+	button.custom_minimum_size = Vector2(58, 36) if GameInput.touch_controls_active else Vector2(40, 23)
 	button.focus_mode = Control.FOCUS_NONE
 	button.add_theme_font_size_override("font_size", 11)
 	for state in ["normal", "hover", "pressed"]:

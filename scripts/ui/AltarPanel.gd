@@ -208,7 +208,7 @@ func _draw() -> void:
 	)
 
 	_text_centered(
-		"回车交易 · Esc 离开",
+		"点按交易或离开" if GameInput.touch_controls_active else "回车交易 · Esc 离开",
 		panel.end.y - 22.0,
 		12,
 		Color(1.0, 1.0, 1.0, 0.32 * ease)

@@ -59,6 +59,8 @@ var _hold_start_x := 0.0
 var _hold_start_position := Vector2.ZERO
 var _hold_direction := 0
 var _hold_preview_emitted := false
+var _touch_switch_gesture := false
+var _hold_max_distance := 0.0
 var _manual_fire_held := false
 var _manual_aim_timer := 0.0
 var _manual_aim_direction := Vector2.RIGHT
@@ -171,7 +173,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	var input_direction := Input.get_vector(
+	var input_direction := GameInput.mobile_move_direction if GameInput.touch_controls_active else Input.get_vector(
 		&"move_left", &"move_right", &"move_up", &"move_down"
 	)
 	velocity = input_direction * effective_move_speed()
@@ -209,7 +211,7 @@ func _process(delta: float) -> void:
 	if controls_enabled and not RunState.is_dead and Skills.heavy_shot_enabled():
 		_heavy_timer = maxf(0.0, _heavy_timer - delta)
 
-	# 按住左键持续手动瞄准；松开后 0.5 秒内仍不回到自动瞄准。
+	# 桌面左键手动瞄准；手机始终由最近敌人自动索敌。
 	if _manual_fire_held:
 		_manual_aim_timer = MANUAL_AIM_WINDOW
 		var aim := _mouse_aim_direction()
@@ -253,6 +255,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
+		if GameInput.touch_controls_active:
+			return
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
 			if mouse_event.pressed:
@@ -275,9 +279,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			_begin_switch_gesture(mouse_event.position)
 		elif _hold_active:
 			_finish_switch_gesture(mouse_event.position)
-	elif event is InputEventMouseMotion and _hold_active:
+	elif event is InputEventMouseMotion and _hold_active and not GameInput.touch_controls_active:
 		var motion_event := event as InputEventMouseMotion
 		_update_switch_direction(motion_event.position)
+
+
+func begin_touch_switch(screen_position: Vector2) -> void:
+	_touch_switch_gesture = true
+	_begin_switch_gesture(screen_position)
+
+
+func update_touch_switch(screen_position: Vector2) -> void:
+	if _hold_active and _touch_switch_gesture:
+		_update_switch_direction(screen_position)
+
+
+func finish_touch_switch(screen_position: Vector2) -> void:
+	if _hold_active and _touch_switch_gesture:
+		_finish_switch_gesture(screen_position)
+
+
+func cancel_touch_switch() -> void:
+	if not _touch_switch_gesture:
+		return
+	_hold_active = false
+	_touch_switch_gesture = false
+	_hold_direction = 0
+	_hold_preview_emitted = false
+	EventBus.color_switch_preview.emit(false, Vector2.ZERO, 0, 0, 0)
 
 
 func _begin_switch_gesture(screen_position: Vector2) -> void:
@@ -287,14 +316,16 @@ func _begin_switch_gesture(screen_position: Vector2) -> void:
 	_hold_start_position = screen_position
 	_hold_direction = 0
 	_hold_preview_emitted = false
+	_hold_max_distance = 0.0
 
 
 func _update_switch_direction(screen_position: Vector2) -> void:
 	var held_ms := Time.get_ticks_msec() - _hold_start_ms
 	var delta_x := screen_position.x - _hold_start_x
+	_hold_max_distance = maxf(_hold_max_distance, screen_position.distance_to(_hold_start_position))
 
 	var direction := 0
-	if held_ms >= DRAG_HOLD_MS and absf(delta_x) >= DRAG_DISTANCE:
+	if (held_ms >= DRAG_HOLD_MS or _touch_switch_gesture) and absf(delta_x) >= DRAG_DISTANCE:
 		direction = 1 if delta_x > 0.0 else -1
 
 	if direction != _hold_direction:
@@ -310,12 +341,13 @@ func _finish_switch_gesture(screen_position: Vector2) -> void:
 	if _hold_direction != 0:
 		# 长按后向左/右拖动，松开时确认。
 		RunState.cycle_color(_hold_direction)
-	elif held_ms < DRAG_HOLD_MS:
+	elif held_ms < DRAG_HOLD_MS and _hold_max_distance < DRAG_DISTANCE:
 		# 快速点击：循环到下一个颜色。
 		RunState.cycle_color(1)
 	# 长按但未拖动：取消，不消耗能量。
 
 	_hold_active = false
+	_touch_switch_gesture = false
 	_hold_direction = 0
 	_hold_preview_emitted = false
 	EventBus.color_switch_preview.emit(false, Vector2.ZERO, 0, 0, 0)
@@ -331,6 +363,7 @@ func _on_game_paused(paused: bool) -> void:
 	if not _hold_active:
 		return
 	_hold_active = false
+	_touch_switch_gesture = false
 	_hold_direction = 0
 	_hold_preview_emitted = false
 	EventBus.color_switch_preview.emit(false, Vector2.ZERO, 0, 0, 0)

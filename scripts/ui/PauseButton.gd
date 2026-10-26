@@ -13,7 +13,12 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	focus_mode = Control.FOCUS_NONE
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	tooltip_text = "暂停 (Esc)"
+	tooltip_text = "暂停" if GameInput.touch_controls_active else "暂停 (Esc)"
+	if GameInput.touch_controls_active:
+		offset_left = -82.0
+		offset_top = 16.0
+		offset_right = -16.0
+		offset_bottom = 82.0
 
 
 func _draw() -> void:

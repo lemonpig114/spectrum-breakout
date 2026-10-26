@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://by8uuuvdq07rg"]
+[gd_scene load_steps=18 format=3 uid="uid://by8uuuvdq07rg"]
 
 [ext_resource type="Script" uid="uid://dgkmdne28i40d" path="res://scripts/game/Main.gd" id="1_main"]
 [ext_resource type="Shader" uid="uid://brwav5d8gt324" path="res://shaders/grid.gdshader" id="2_grid_shader"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/ui/AltarPanel.gd" id="12_altar"]
 [ext_resource type="Script" path="res://scripts/ui/RelicChoicePanel.gd" id="13_relic_choice"]
 [ext_resource type="Script" path="res://scripts/ui/GameOverPanel.gd" id="14_game_over"]
+[ext_resource type="Script" path="res://scripts/ui/MobileControls.gd" id="15_mobile_controls"]
 
 [sub_resource type="Environment" id="Environment_neon"]
 glow_enabled = true
@@ -96,6 +97,16 @@ offset_bottom = 64.0
 grow_horizontal = 0
 mouse_filter = 0
 script = ExtResource("11_pause_button")
+
+[node name="MobileControls" type="Control" parent="HUD/HUDControl"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("15_mobile_controls")
 
 [node name="LevelUpPanel" type="Control" parent="HUD"]
 process_mode = 2

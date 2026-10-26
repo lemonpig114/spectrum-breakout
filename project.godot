@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="光谱突围"
+config/quit_on_go_back=false
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 run/max_fps=60
@@ -38,4 +39,5 @@ window/stretch/aspect="expand"
 [rendering]
 
 viewport/hdr_2d=true
+textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)

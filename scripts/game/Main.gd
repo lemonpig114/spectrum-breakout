@@ -27,6 +27,7 @@ const MERCHANT_KNOCKBACK_TIME := 0.42
 @onready var game_over_panel: GameOverPanel = $HUD/GameOverPanel
 @onready var hud_control: Control = $HUD/HUDControl
 @onready var pause_button: PauseButton = $HUD/HUDControl/PauseButton
+@onready var mobile_controls: MobileControls = $HUD/HUDControl/MobileControls
 
 var player: Player
 var _level_ups_pending := 0
@@ -58,6 +59,10 @@ func _ready() -> void:
 		add_child(recorder)
 		recorder.setup(self)
 	_spawn_player()
+	var modal_panels: Array[Control] = [
+		level_up_panel, shop_panel, altar_panel, pause_panel, game_over_panel
+	]
+	mobile_controls.bind(player, pause_button, $HUD/RelicChoicePanel, modal_panels)
 	Skills.bind_player(player)
 	var summon_field: SummonField = SUMMON_FIELD.new()
 	summon_field.name = "SummonField"
@@ -464,6 +469,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		if RunState.is_running:
 			_toggle_manual_pause()
 			get_viewport().set_input_as_handled()
+
+
+func _notification(what: int) -> void:
+	if not GameInput.touch_controls_active or not is_node_ready():
+		return
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		if RunState.is_running and not get_tree().paused:
+			_toggle_manual_pause()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if shop_panel.visible:
+			_on_shop_closed()
+		elif altar_panel.visible:
+			_on_altar_closed(false)
+		elif not level_up_panel.visible and not RunState.is_dead:
+			_toggle_manual_pause()
 
 
 func _exit_tree() -> void:

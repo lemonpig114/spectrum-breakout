@@ -308,7 +308,8 @@ func _draw_tabs(layout: Dictionary, alpha: float) -> void:
 
 	var hint_right: float = layout["left_x"] + layout["left_w"]
 	_text_right(
-		("%d 条已选路线 · %d 个节点 · 悬停查看详情" % [_branch_cache.size(), Skills.unlocked_count()]) if _tab == 0 else ("本局已拥有遗物" if _tab == 1 else "实际伤害与单项增伤估算"),
+		("%d 条已选路线 · %d 个节点 · %s查看详情" % [_branch_cache.size(), Skills.unlocked_count(),
+			"点按" if GameInput.touch_controls_active else "悬停"]) if _tab == 0 else ("本局已拥有遗物" if _tab == 1 else "实际伤害与单项增伤估算"),
 		hint_right,
 		rects[0].position.y + 25.0,
 		10,
@@ -747,13 +748,16 @@ func _draw_quick_hints(layout: Dictionary, alpha: float) -> void:
 	var rect := _hints_rect(layout)
 	draw_rect(rect, Color(0.034, 0.044, 0.065, 0.7 * alpha))
 	draw_rect(rect, Color(1.0, 1.0, 1.0, 0.045 * alpha), false, 1.0)
-	_text("快捷键", rect.position + Vector2(14.0, 18.0), 9,
+	_text("触屏操作" if GameInput.touch_controls_active else "快捷键",
+		rect.position + Vector2(14.0, 18.0), 9,
 		Color(1.0, 1.0, 1.0, 0.34 * alpha))
 	var hints := [
 		["Esc", "继续游戏"],
 		["Tab", "切换页签"],
 		["M", "音效开关"],
 	]
+	if GameInput.touch_controls_active:
+		hints = [["点按", "选择操作"], ["拖动", "浏览列表"], ["返回", "继续游戏"]]
 	for i in hints.size():
 		var baseline := rect.position.y + 38.0 + float(i) * 18.0
 		var key_color := Color(GOLD.r, GOLD.g, GOLD.b, 0.58 * alpha)
@@ -852,7 +856,7 @@ func _draw_settings(layout: Dictionary, alpha: float) -> void:
 	var tip_rect := _settings_tip_rect(layout)
 	draw_rect(tip_rect, Color(0.034, 0.044, 0.065, 0.68 * alpha))
 	draw_rect(tip_rect, Color(1.0, 1.0, 1.0, 0.045 * alpha), false, 1.0)
-	_text("M", tip_rect.position + Vector2(14.0, 19.0), 9,
+	_text("点按" if GameInput.touch_controls_active else "M", tip_rect.position + Vector2(14.0, 19.0), 9,
 		Color(GOLD.r, GOLD.g, GOLD.b, 0.58 * alpha), true)
 	_text("随时静音 / 取消静音", tip_rect.position + Vector2(38.0, 19.0), 9,
 		Color(1.0, 1.0, 1.0, 0.40 * alpha))
@@ -899,7 +903,8 @@ func _draw_quit(layout: Dictionary, alpha: float) -> void:
 
 func _draw_footer(layout: Dictionary, alpha: float) -> void:
 	var card: Rect2 = layout["card"]
-	var text := "Esc 返回 / 继续    Tab 切换    M 静音    滚轮 浏览列表"
+	var text := "点按选择 · 拖动浏览列表" if GameInput.touch_controls_active else \
+		"Esc 返回 / 继续    Tab 切换    M 静音    滚轮 浏览列表"
 	draw_string(
 		_font,
 		Vector2(card.position.x + 22.0, card.end.y - 9.0),

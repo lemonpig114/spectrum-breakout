@@ -2,3 +2,5 @@
 .godot/
 /android/
 .obsidian/
+/build/
+/export_presets.cfg

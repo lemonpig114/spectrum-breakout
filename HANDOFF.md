@@ -1,5 +1,11 @@
 # 交接记录 — 2026-10-23（第二十轮 + 死亡界面修复 / Claude）
 
+## Codex 更新（2026-10-27，Android 触屏第一版）
+
+- `GameInput.touch_controls_active` 在移动平台自动启用，可用 `--mobile-controls-test` 在电脑模拟。`MobileControls` 接入主场景：左下区域浮动霓虹摇杆，10 px 死区、57 px 达满速、外环慢速跟随；双指独立，移动中可轻点切色、左右滑动切色或长按预览。手机端不触发左键手动瞄准，仍自动索敌。安卓返回暂停/恢复，切后台自动暂停；桌面键鼠操作保留。
+- 手机模式的 HUD、图鉴、商店、祭坛、暂停和死亡面板改用触屏提示；暂停入口放大，遗物选择按钮放大。无新增战斗按钮。`tests/mobile_controls_test.tscn` 覆盖双指、手势、死区与暂停清理，退出 0；桌面 `smoke_test` 通过。1600×720 宽屏截图已检查摇杆视觉。
+- Android 调试 APK 已导出至 `build/spectrum-breakout-android-debug.apk`（ARM64、API 21–34、横屏、已签名）。为 Godot 4.4.1 补齐 Android 34 SDK 并启用 ETC2/ASTC 导入；导出 preset、APK 和调试签名文件均不入 Git。当前 `adb devices` 为空，仍需用户手机实测双指手感、UI、安全区与高压帧率。完整步骤见 `docs/MOBILE.md`。
+
 ## Codex 更新（2026-10-26，Godot 编辑器启动卡死排查）
 
 - 用 Godot 4.4.1 的 `EditorInterface.play_main_scene()` 在独立空白 Forward+ 工程复现了编辑器卡死：Vulkan 内嵌运行时游戏子进程正常完成 60 帧并退出，编辑器却失去响应；Vulkan 游戏单独运行正常。空白工程的兼容渲染内嵌运行、Forward+ D3D12 内嵌运行，以及 Forward+ Vulkan 加 `--single-window`（游戏不内嵌）均正常。由此判断卡点在 Godot 4.4.1 的 Vulkan 编辑器内嵌游戏窗口路径，而非本项目游戏逻辑。显卡为 Intel Arc 集成显卡，驱动 32.0.101.8724；尚未证明驱动是根因。

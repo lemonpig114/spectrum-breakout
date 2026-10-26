@@ -581,8 +581,11 @@ func _draw_hint() -> void:
 	if _hint_time > 8.0:
 		alpha = clampf(1.0 - (_hint_time - 8.0) / 4.0, 0.0, 1.0)
 
+	var hint := "左键：朝指针射击    右键点击：循环颜色    长按拖动：左/右选择并松开确认"
+	if GameInput.touch_controls_active:
+		hint = "左下滑动移动    轻点切色    长按查看 · 左右滑动选择颜色"
 	_draw_text_centered(
-		"左键：朝指针射击    右键点击：循环颜色    长按拖动：左/右选择并松开确认",
+		hint,
 		size.y - 100.0,
 		13,
 		Color(1.0, 1.0, 1.0, 0.5 * alpha)
