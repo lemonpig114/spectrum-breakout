@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"chaser_round"
+display_name = "疾爆圆核"
+sides = 16
+shape = &"polygon"
+max_health = 20.0
+move_speed = 235.0
+contact_damage = 0.5
+radius = 10.0
+xp_reward = 1.0
+gold_reward = 1
+spawn_weight = 0.0
+unlock_time = 300.0
+behavior = &"explode"
+explosion_radius = 64.0

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="WeaponCoreResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponCoreResource.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = &"rapid_bolt"
+display_name = "游隼速射"
+damage = 7.5
+fire_rate = 4.6
+projectile_speed = 820.0
+projectile_size = 4.0
+projectile_lifetime = 0.95
+projectiles_per_shot = 1
+spread_degrees = 1.5
+pierce = 0
+projectile_sides = 4

@@ -1,0 +1,17 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://btfurqt02h463"
+
+[deps]
+
+files=["res://tests/perf_user_after_pickup_20261023.avg.translation", "res://tests/perf_user_after_pickup_20261023.min.translation", "res://tests/perf_user_after_pickup_20261023.max.translation", "res://tests/perf_user_after_pickup_20261023.process.translation", "res://tests/perf_user_after_pickup_20261023.process.translation", "res://tests/perf_user_after_pickup_20261023.physics.translation", "res://tests/perf_user_after_pickup_20261023.physics.translation", "res://tests/perf_user_after_pickup_20261023.static.translation", "res://tests/perf_user_after_pickup_20261023.nodes.translation", "res://tests/perf_user_after_pickup_20261023.resources.translation", "res://tests/perf_user_after_pickup_20261023.enemies.translation", "res://tests/perf_user_after_pickup_20261023.projectiles.translation", "res://tests/perf_user_after_pickup_20261023.pickups.translation", "res://tests/perf_user_after_pickup_20261023.fx.translation", "res://tests/perf_user_after_pickup_20261023.bursts.translation", "res://tests/perf_user_after_pickup_20261023.sparks.translation", "res://tests/perf_user_after_pickup_20261023.shards.translation"]
+
+source_file="res://tests/perf_user_after_pickup_20261023.csv"
+dest_files=["res://tests/perf_user_after_pickup_20261023.avg.translation", "res://tests/perf_user_after_pickup_20261023.min.translation", "res://tests/perf_user_after_pickup_20261023.max.translation", "res://tests/perf_user_after_pickup_20261023.process.translation", "res://tests/perf_user_after_pickup_20261023.process.translation", "res://tests/perf_user_after_pickup_20261023.physics.translation", "res://tests/perf_user_after_pickup_20261023.physics.translation", "res://tests/perf_user_after_pickup_20261023.static.translation", "res://tests/perf_user_after_pickup_20261023.nodes.translation", "res://tests/perf_user_after_pickup_20261023.resources.translation", "res://tests/perf_user_after_pickup_20261023.enemies.translation", "res://tests/perf_user_after_pickup_20261023.projectiles.translation", "res://tests/perf_user_after_pickup_20261023.pickups.translation", "res://tests/perf_user_after_pickup_20261023.fx.translation", "res://tests/perf_user_after_pickup_20261023.bursts.translation", "res://tests/perf_user_after_pickup_20261023.sparks.translation", "res://tests/perf_user_after_pickup_20261023.shards.translation"]
+
+[params]
+
+compress=true
+delimiter=0

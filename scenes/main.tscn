@@ -1,0 +1,165 @@
+[gd_scene load_steps=17 format=3 uid="uid://by8uuuvdq07rg"]
+
+[ext_resource type="Script" uid="uid://dgkmdne28i40d" path="res://scripts/game/Main.gd" id="1_main"]
+[ext_resource type="Shader" uid="uid://brwav5d8gt324" path="res://shaders/grid.gdshader" id="2_grid_shader"]
+[ext_resource type="Script" uid="uid://tp8b8isjb8d2" path="res://scripts/arena/GridBackground.gd" id="3_grid"]
+[ext_resource type="Script" uid="uid://b6mdf2ea5hkdp" path="res://scripts/camera/CameraRig.gd" id="4_camera"]
+[ext_resource type="Script" uid="uid://durrj4dct728w" path="res://scripts/ui/HUD.gd" id="5_hud"]
+[ext_resource type="Script" uid="uid://besasqqp8a8yy" path="res://scripts/projectiles/ProjectileManager.gd" id="6_projectiles"]
+[ext_resource type="Script" uid="uid://d1usu8doa6vii" path="res://scripts/ui/LevelUpPanel.gd" id="7_levelup"]
+[ext_resource type="Script" path="res://scripts/pickups/PickupField.gd" id="8_pickups"]
+[ext_resource type="Script" path="res://scripts/ui/ShopPanel.gd" id="9_shop"]
+[ext_resource type="Script" path="res://scripts/ui/PausePanel.gd" id="10_pause"]
+[ext_resource type="Script" path="res://scripts/ui/PauseButton.gd" id="11_pause_button"]
+[ext_resource type="Script" path="res://scripts/ui/AltarPanel.gd" id="12_altar"]
+[ext_resource type="Script" path="res://scripts/ui/RelicChoicePanel.gd" id="13_relic_choice"]
+[ext_resource type="Script" path="res://scripts/ui/GameOverPanel.gd" id="14_game_over"]
+
+[sub_resource type="Environment" id="Environment_neon"]
+glow_enabled = true
+glow_levels/1 = 1.0
+glow_levels/2 = 1.0
+glow_levels/4 = 0.8
+glow_levels/5 = 0.6
+glow_intensity = 1.8
+glow_strength = 1.2
+glow_bloom = 0.25
+glow_blend_mode = 0
+glow_hdr_threshold = 0.9
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_grid"]
+shader = ExtResource("2_grid_shader")
+shader_parameter/rect_size = Vector2(2400, 1800)
+shader_parameter/shader_time = 0.0
+shader_parameter/ripple0 = Vector4(0, 0, 0, 0)
+shader_parameter/ripple1 = Vector4(0, 0, 0, 0)
+shader_parameter/ripple2 = Vector4(0, 0, 0, 0)
+shader_parameter/ripple3 = Vector4(0, 0, 0, 0)
+shader_parameter/background_color = Color(0.008, 0.01, 0.018, 1)
+shader_parameter/minor_color = Color(0.06, 0.085, 0.13, 1)
+shader_parameter/major_color = Color(0.12, 0.18, 0.28, 1)
+shader_parameter/minor_spacing = 16.0
+shader_parameter/major_spacing = 64.0
+shader_parameter/line_width = 1.0
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_neon")
+
+[node name="Arena" type="ColorRect" parent="."]
+z_index = -10
+material = SubResource("ShaderMaterial_grid")
+offset_left = -1200.0
+offset_top = -900.0
+offset_right = 1200.0
+offset_bottom = 900.0
+mouse_filter = 2
+script = ExtResource("3_grid")
+
+[node name="CameraRig" type="Camera2D" parent="."]
+script = ExtResource("4_camera")
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="ProjectileManager" type="Node2D" parent="World"]
+script = ExtResource("6_projectiles")
+
+[node name="PickupField" type="Node2D" parent="World"]
+script = ExtResource("8_pickups")
+
+[node name="FXLayer" type="Node2D" parent="."]
+z_index = 20
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="HUDControl" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_hud")
+
+[node name="PauseButton" type="Control" parent="HUD/HUDControl"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -66.0
+offset_top = 18.0
+offset_right = -20.0
+offset_bottom = 64.0
+grow_horizontal = 0
+mouse_filter = 0
+script = ExtResource("11_pause_button")
+
+[node name="LevelUpPanel" type="Control" parent="HUD"]
+process_mode = 2
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("7_levelup")
+
+[node name="ShopPanel" type="Control" parent="HUD"]
+process_mode = 2
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("9_shop")
+
+[node name="AltarPanel" type="Control" parent="HUD"]
+process_mode = 2
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("12_altar")
+
+[node name="PausePanel" type="Control" parent="HUD"]
+process_mode = 2
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("10_pause")
+
+[node name="RelicChoicePanel" type="Control" parent="HUD"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("13_relic_choice")
+
+[node name="GameOverPanel" type="Control" parent="HUD"]
+process_mode = 3
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("14_game_over")

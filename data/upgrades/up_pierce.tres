@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="UpgradeOptionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/upgrades/UpgradeOptionResource.gd" id="1_upgrade"]
+[ext_resource type="Script" path="res://scripts/combat/StatModifierResource.gd" id="2_modifier"]
+
+[sub_resource type="Resource" id="Resource_modifier"]
+script = ExtResource("2_modifier")
+stat = &"pierce"
+op = 0
+value = 1.0
+source = &"up_pierce"
+
+[resource]
+script = ExtResource("1_upgrade")
+id = &"up_pierce"
+display_name = "贯穿"
+description = "子弹穿透 +1"
+target = 0
+modifier = SubResource("Resource_modifier")
+weight = 0.75
+max_stacks = 3

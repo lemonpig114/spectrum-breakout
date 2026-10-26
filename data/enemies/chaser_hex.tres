@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"chaser_hex"
+display_name = "重装六边"
+sides = 6
+max_health = 200.0
+move_speed = 90.0
+contact_damage = 0.5
+radius = 24.0
+xp_reward = 5.0
+gold_reward = 5
+spawn_weight = 1.2
+unlock_time = 70.0
+behavior = &"chase"

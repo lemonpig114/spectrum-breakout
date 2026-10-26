@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"square_boss"
+display_name = "封锁方阵"
+sides = 4
+max_health = 50000.0
+move_speed = 64.0
+contact_damage = 0.5
+radius = 52.0
+xp_reward = 24.0
+gold_reward = 12
+spawn_weight = 0.0
+unlock_time = 180.0
+behavior = &"boss"
+is_boss = true

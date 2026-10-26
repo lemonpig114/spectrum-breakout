@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CharacterResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/player/CharacterResource.gd" id="1_character"]
+
+[resource]
+script = ExtResource("1_character")
+body_style = 1
+barrel_style = 1
+id = &"bulwark"
+display_name = "壁垒"
+role = "重装型 · 高伤低速"
+description = "重装作战单元。生命更高、移速更慢，基础伤害 ×1.5、射速 ×0.75，弹体更大。"
+order = 1
+accent = Color(1, 0.68, 0.32, 1)
+body_radius = 15.0
+max_health = 7.0
+move_speed = 205.0
+damage_multiplier = 1.5
+fire_rate_multiplier = 0.75
+projectile_size_multiplier = 1.15

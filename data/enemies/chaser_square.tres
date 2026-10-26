@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"chaser_square"
+display_name = "基础方块"
+sides = 4
+max_health = 60.0
+move_speed = 90.0
+contact_damage = 0.5
+radius = 12.0
+xp_reward = 1.5
+gold_reward = 1
+spawn_weight = 2.0
+unlock_time = 25.0
+behavior = &"chase"

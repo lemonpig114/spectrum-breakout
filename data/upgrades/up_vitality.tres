@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="UpgradeOptionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/upgrades/UpgradeOptionResource.gd" id="1_upgrade"]
+[ext_resource type="Script" path="res://scripts/combat/StatModifierResource.gd" id="2_modifier"]
+
+[sub_resource type="Resource" id="Resource_modifier"]
+script = ExtResource("2_modifier")
+stat = &"max_health"
+op = 0
+value = 20.0
+source = &"up_vitality"
+
+[resource]
+script = ExtResource("1_upgrade")
+id = &"up_vitality"
+display_name = "强健"
+description = "生命上限 +20"
+target = 1
+modifier = SubResource("Resource_modifier")
+weight = 0.85
+max_stacks = 6

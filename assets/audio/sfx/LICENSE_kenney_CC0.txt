@@ -1,0 +1,19 @@
+Sound effects in this directory are selected from Kenney audio packs.
+
+Created/distributed by Kenney (www.kenney.nl)
+License: Creative Commons Zero (CC0 1.0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Packs used:
+- Impact Sounds: https://kenney.nl/assets/impact-sounds
+- Interface Sounds: https://kenney.nl/assets/interface-sounds
+- Sci-Fi Sounds: https://kenney.nl/assets/sci-fi-sounds
+- Digital Audio: https://kenney.nl/assets/digital-audio
+- RPG Audio: https://kenney.nl/assets/rpg-audio
+- UI Audio: https://kenney.nl/assets/ui-audio
+
+This content is free to use in personal, educational and commercial
+projects. Crediting Kenney or www.kenney.nl is appreciated but not
+mandatory.
+
+The complete id -> source file mapping is in docs/AUDIO.md.

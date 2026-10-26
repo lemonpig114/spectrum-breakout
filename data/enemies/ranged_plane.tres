@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"ranged_plane"
+display_name = "飞翼射手"
+sides = 3
+shape = &"airplane"
+max_health = 28.0
+move_speed = 74.0
+contact_damage = 0.5
+radius = 16.0
+xp_reward = 2.0
+gold_reward = 1
+spawn_weight = 0.0
+unlock_time = 240.0
+behavior = &"ranged"
+preferred_distance = 340.0
+shot_interval = 3.0
+projectile_speed = 310.0

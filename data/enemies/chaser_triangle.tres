@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EnemyTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/EnemyTypeResource.gd" id="1_enemy_type"]
+
+[resource]
+script = ExtResource("1_enemy_type")
+id = &"chaser_triangle"
+display_name = "迅捷三角"
+sides = 3
+max_health = 25.0
+move_speed = 145.0
+contact_damage = 0.5
+radius = 11.0
+xp_reward = 1
+gold_reward = 1
+spawn_weight = 3.0
+unlock_time = 0.0
+behavior = &"chase"

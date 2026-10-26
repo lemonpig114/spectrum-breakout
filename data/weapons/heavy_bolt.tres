@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="WeaponCoreResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponCoreResource.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = &"heavy_bolt"
+display_name = "壁垒重弹"
+damage = 18.0
+fire_rate = 2.2
+projectile_speed = 660.0
+projectile_size = 6.5
+projectile_lifetime = 1.2
+projectiles_per_shot = 1
+spread_degrees = 0.0
+pierce = 1
+projectile_sides = 4
