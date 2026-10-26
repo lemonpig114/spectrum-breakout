@@ -63,26 +63,14 @@ func all_ids() -> Array:
 
 
 func _scan_directory(path: String) -> void:
-	var directory := DirAccess.open(path)
-	if directory == null:
-		return
-
-	directory.list_dir_begin()
-	var entry := directory.get_next()
-	while not entry.is_empty():
-		if entry.begins_with("."):
-			entry = directory.get_next()
-			continue
-
+	# DirAccess 在导出包中会看到转换后的文件名，导致 .tres 判断失效。
+	# ResourceLoader 返回编辑器里的原始资源路径，桌面和 Android 导出共用。
+	for entry in ResourceLoader.list_directory(path):
 		var full_path := path.path_join(entry)
-		if directory.current_is_dir():
+		if entry.ends_with("/"):
 			_scan_directory(full_path)
 		elif entry.ends_with(".tres") or entry.ends_with(".res"):
 			_load_resource(full_path)
-
-		entry = directory.get_next()
-
-	directory.list_dir_end()
 
 
 func _load_resource(path: String) -> void:

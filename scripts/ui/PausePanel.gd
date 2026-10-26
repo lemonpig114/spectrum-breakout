@@ -854,6 +854,19 @@ func _draw_settings(layout: Dictionary, alpha: float) -> void:
 	_text_right(state_text, mute_rect.end.x - 14.0, mute_rect.position.y + 25.0, 11,
 		Color(GOLD.r, GOLD.g, GOLD.b, 0.82 * alpha) if not Audio.is_muted() else Color(1.0, 1.0, 1.0, 0.38 * alpha), true)
 	var tip_rect := _settings_tip_rect(layout)
+	if GameInput.touch_controls_active:
+		var joystick_rect := _joystick_setting_rect(layout)
+		draw_rect(joystick_rect, Color(0.055, 0.07, 0.10, 0.92 * alpha))
+		draw_rect(joystick_rect,
+			Color(GOLD.r, GOLD.g, GOLD.b, 0.55 * alpha) if _settings_hover == 4
+			else Color(1.0, 1.0, 1.0, 0.10 * alpha), false, 1.0)
+		_text("虚拟摇杆", joystick_rect.position + Vector2(14.0, 25.0), 11,
+			Color(1.0, 1.0, 1.0, 0.78 * alpha))
+		_text_right("跟随" if GameInput.joystick_follow else "不跟随",
+			joystick_rect.end.x - 14.0, joystick_rect.position.y + 25.0, 11,
+			Color(GOLD.r, GOLD.g, GOLD.b, 0.86 * alpha), true)
+		_text("触点生成 · 默认不跟随", joystick_rect.position + Vector2(14.0, 49.0), 9,
+			Color(1.0, 1.0, 1.0, 0.36 * alpha))
 	draw_rect(tip_rect, Color(0.034, 0.044, 0.065, 0.68 * alpha))
 	draw_rect(tip_rect, Color(1.0, 1.0, 1.0, 0.045 * alpha), false, 1.0)
 	_text("点按" if GameInput.touch_controls_active else "M", tip_rect.position + Vector2(14.0, 19.0), 9,
@@ -1129,9 +1142,15 @@ func _mute_rect(layout: Dictionary) -> Rect2:
 func _settings_tip_rect(layout: Dictionary) -> Rect2:
 	var settings := _settings_rect(layout)
 	return Rect2(
-		Vector2(settings.position.x, settings.end.y + 12.0),
+		Vector2(settings.position.x, settings.end.y + (92.0 if GameInput.touch_controls_active else 12.0)),
 		Vector2(settings.size.x, 50.0)
 	)
+
+
+func _joystick_setting_rect(layout: Dictionary) -> Rect2:
+	var settings := _settings_rect(layout)
+	return Rect2(Vector2(settings.position.x, settings.end.y + 12.0),
+		Vector2(settings.size.x, 68.0))
 
 
 func _quit_card_rect(layout: Dictionary) -> Rect2:
@@ -1241,6 +1260,8 @@ func _update_hover(point: Vector2) -> void:
 				_settings_hover = i
 		if _mute_rect(layout).has_point(point):
 			_settings_hover = 2
+		if GameInput.touch_controls_active and _joystick_setting_rect(layout).has_point(point):
+			_settings_hover = 4
 		if _right_button_rects(layout, 1)[0].has_point(point):
 			_settings_hover = 3
 	else:
@@ -1289,6 +1310,12 @@ func _click(point: Vector2) -> void:
 			accept_event()
 			Audio.play(&"ui_click")
 			Audio.toggle_muted()
+			queue_redraw()
+			return
+		if GameInput.touch_controls_active and _joystick_setting_rect(layout).has_point(point):
+			accept_event()
+			Audio.play(&"ui_click")
+			GameInput.set_joystick_follow(not GameInput.joystick_follow)
 			queue_redraw()
 			return
 		if _right_button_rects(layout, 1)[0].has_point(point):

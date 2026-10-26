@@ -11,7 +11,7 @@ extends Resource
 
 @export var red: Color = Color(1.0, 0.12, 0.22, 1.0)
 @export var green: Color = Color(0.12, 1.0, 0.38, 1.0)
-@export var blue: Color = Color(0.16, 0.42, 1.0, 1.0)
+@export var blue: Color = Color(0.12, 0.20, 1.0, 1.0)
 
 
 func color_for(color_index: int) -> Color:

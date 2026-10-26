@@ -16,9 +16,9 @@ func _ready() -> void:
 	tooltip_text = "暂停" if GameInput.touch_controls_active else "暂停 (Esc)"
 	if GameInput.touch_controls_active:
 		offset_left = -82.0
-		offset_top = 16.0
+		offset_top = 40.0
 		offset_right = -16.0
-		offset_bottom = 82.0
+		offset_bottom = 106.0
 
 
 func _draw() -> void:

@@ -5,6 +5,8 @@ var failures := 0
 
 
 func _ready() -> void:
+	var previous_joystick_mode := GameInput.joystick_follow
+	GameInput.set_joystick_follow(false)
 	var main: Node2D = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 	await get_tree().process_frame
@@ -15,10 +17,13 @@ func _ready() -> void:
 	RunState.start()
 	mobile._process(0.016)
 	failures += _check(GameInput.touch_controls_active, "touch mode is enabled")
-	failures += _check(mobile.visible, "floating controls appear during play")
+	failures += _check(mobile.visible and not GameInput.joystick_follow,
+		"touch-position joystick does not follow by default")
+	failures += _check(ContentDB.get_enemies().size() > 0, "enemy resources are available")
 
-	mobile._input(_touch(1, Vector2(110, 550), true))
-	mobile._input(_drag(1, Vector2(175, 550)))
+	var joystick_center := Vector2(110, 550)
+	mobile._input(_touch(1, joystick_center, true))
+	mobile._input(_drag(1, joystick_center + Vector2(65.0, 0.0)))
 	failures += _check(GameInput.mobile_move_direction.x > 0.95, "joystick reaches full speed")
 	failures += _check(absf(GameInput.mobile_move_direction.y) < 0.01, "joystick keeps heading")
 
@@ -34,15 +39,23 @@ func _ready() -> void:
 	mobile._input(_touch(2, Vector2(855, 560), false))
 	failures += _check(RunState.color_index == ColorType.next(color_after_tap, -1), "left swipe switches back")
 
-	mobile._input(_touch(1, Vector2(175, 550), false))
+	mobile._input(_touch(1, joystick_center + Vector2(65.0, 0.0), false))
 	failures += _check(GameInput.mobile_move_direction == Vector2.ZERO, "lift releases movement")
 
 	mobile._input(_touch(3, Vector2(120, 550), true))
 	mobile._input(_drag(3, Vector2(125, 550)))
 	failures += _check(GameInput.mobile_move_direction == Vector2.ZERO, "small motion stays inside dead zone")
+	var fixed_base := mobile._base
+	mobile._input(_drag(3, fixed_base + Vector2(190, 0)))
+	failures += _check(mobile._base == fixed_base and GameInput.mobile_move_direction.x > 0.95,
+		"touch-position base does not follow a long thumb drag")
+	mobile._input(_touch(3, fixed_base + Vector2(190, 0), false))
+	GameInput.set_joystick_follow(true)
+	mobile._input(_touch(3, Vector2(120, 550), true))
 	mobile._input(_drag(3, Vector2(300, 550)))
 	failures += _check(mobile._base.x > 120.0 and GameInput.mobile_move_direction.x > 0.95,
-		"floating base follows a long thumb drag")
+		"optional follow mode moves the base on a long thumb drag")
+	GameInput.set_joystick_follow(false)
 	RunState.request_pause(&"manual_pause")
 	mobile._process(0.016)
 	failures += _check(GameInput.mobile_move_direction == Vector2.ZERO and mobile._move_index < 0,
@@ -72,6 +85,13 @@ func _ready() -> void:
 	main._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	failures += _check(get_tree().paused and pause_panel.visible,
 		"Android back opens pause instead of quitting")
+	pause_panel._screen = PausePanel.Screen.SETTINGS
+	var setting_center := pause_panel._joystick_setting_rect(pause_panel._layout()).get_center()
+	pause_panel._click(setting_center)
+	failures += _check(GameInput.joystick_follow, "phone settings enable joystick follow")
+	pause_panel._click(setting_center)
+	failures += _check(not GameInput.joystick_follow, "phone settings disable joystick follow")
+	pause_panel._screen = PausePanel.Screen.MENU
 	main._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	failures += _check(not get_tree().paused and not pause_panel.visible,
 		"Android back resumes from pause")
@@ -90,6 +110,7 @@ func _ready() -> void:
 			print("MOBILE SHOT ", path)
 			break
 
+	GameInput.set_joystick_follow(previous_joystick_mode)
 	print("MOBILE CONTROLS %s" % ("PASS" if failures == 0 else "FAIL: %d" % failures))
 	get_tree().quit(0 if failures == 0 else 1)
 

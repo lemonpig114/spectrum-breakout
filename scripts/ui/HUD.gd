@@ -98,11 +98,16 @@ func _draw() -> void:
 	if not RunState.is_running and not RunState.is_dead:
 		return
 
+	# Android 状态栏可能以透明层覆盖画面，上缘信息整体留出安全距离。
+	if GameInput.touch_controls_active:
+		draw_set_transform(Vector2(0.0, 32.0))
 	_draw_health()
 	_draw_energy()
+	_draw_top_info()
+	if GameInput.touch_controls_active:
+		draw_set_transform(Vector2.ZERO)
 	_draw_color_selector()
 	_draw_color_relation()
-	_draw_top_info()
 	_draw_hint()
 	_draw_switch_indicator()
 	_draw_event_markers()
@@ -583,7 +588,7 @@ func _draw_hint() -> void:
 
 	var hint := "左键：朝指针射击    右键点击：循环颜色    长按拖动：左/右选择并松开确认"
 	if GameInput.touch_controls_active:
-		hint = "左下滑动移动    轻点切色    长按查看 · 左右滑动选择颜色"
+		hint = "左下摇杆移动    轻点切色    长按查看 · 左右滑动选择颜色"
 	_draw_text_centered(
 		hint,
 		size.y - 100.0,

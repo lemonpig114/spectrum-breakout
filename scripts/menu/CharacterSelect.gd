@@ -30,9 +30,9 @@ func _screen_ready() -> void:
 		if _characters[i].id == RunState.selected_character_id:
 			_selected = i
 
-	# 没有角色数据时直接进入游戏，避免停留在空界面。
+	# 内容索引损坏时留在选择页并报错，不能默默替用户选角进入空战场。
 	if _characters.is_empty():
-		change_screen(MAIN_SCENE)
+		push_error("CharacterSelect: no character resources loaded")
 
 
 func _screen_process(delta: float) -> void:

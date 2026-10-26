@@ -9,8 +9,12 @@ Geometry remains procedural; round 9 adds a shared generated radial texture and 
 black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow. `rendering/viewport/hdr_2d=true`.
 
 - Git repository with public remote `lemonpig114/spectrum-breakout`. Do not delete files destructively; read `HANDOFF.md` before changing behavior.
-- Android touch input first pass is live: floating joystick and touch color gestures live in `MobileControls`, with
-  movement state in `GameInput`; phone aiming stays automatic. Test/export notes: `docs/MOBILE.md` and `plan.md` §17.
+- Android touch input creates the joystick at the touch point; the base stays there until release by default, with
+  optional base-follow behavior in the phone settings page.
+  The joystick and touch color gestures live in `MobileControls`; movement state and the saved preference live in
+  `GameInput`. Phone aiming stays automatic. Test/export notes: `docs/MOBILE.md` and `plan.md` §17.
+- `ContentDB` must enumerate exported resources with `ResourceLoader.list_directory()`. `DirAccess` failed in the
+  Android package, leaving characters/enemies/skills/relics empty. Recheck an exported `.pck` after content changes.
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
 - 19 skill branches × 4 tiers = **76 nodes**, **51 relics**, shop, luck/chests, manual pause, altars, audio.
 - Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.

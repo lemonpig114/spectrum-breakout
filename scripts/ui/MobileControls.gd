@@ -1,7 +1,7 @@
 class_name MobileControls
 extends Control
 
-## 浮动式单摇杆：左下区域移动，其余游戏区域轻点/横滑/长按切色。
+## 在左下按下位置生成摇杆；默认使用期间基座不动，可在设置中开启跟随。
 ## 使用触点 index，允许一根手指移动时另一根手指独立切色。
 const JOYSTICK_RADIUS := 68.0
 const DEAD_ZONE := 10.0
@@ -127,7 +127,7 @@ func _begin_move(index: int, point: Vector2) -> void:
 func _update_move(point: Vector2) -> void:
 	var displacement := point - _base
 	var distance := displacement.length()
-	if distance > REPOSITION_DISTANCE:
+	if GameInput.joystick_follow and distance > REPOSITION_DISTANCE:
 		# 拖过外环时基座缓慢追上手指，避免长时间顶在硬边界。
 		_base += displacement.normalized() * (distance - REPOSITION_DISTANCE) * 0.32
 		displacement = point - _base

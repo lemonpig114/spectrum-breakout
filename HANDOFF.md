@@ -1,5 +1,12 @@
 # 交接记录 — 2026-10-23（第二十轮 + 死亡界面修复 / Claude）
 
+## Codex 更新（2026-10-27，Android 实机反馈修复）
+
+- 用户实机反馈：选角自动跳过、整局无敌人、蓝色机体偏青，手机摇杆浮动影响手感，截图可见状态栏覆盖上缘 HUD。
+- 根因：`ContentDB` 用 `DirAccess` 遍历 `.tres`，导出包里的资源路径被重映射，动态索引为空。已改成 `ResourceLoader.list_directory()`；选角资源为空时明确报错，不再自动进空战场。
+- 摇杆在左下触点生成，默认本次操作期间底座不移动，可在手机暂停 → 设置开启基座跟随，配置保存在 `user://mobile_controls.cfg`；电脑设置页不显示该项。蓝色绿通道 0.42→0.20；手机 HUD 与暂停按钮下移避开状态栏。
+- 已用 Android preset 导出的 `.pck` 在 Godot 桌面运行时核对：`smoke_test` 显示 10.51 秒时 18 个敌人，角色/武器/76 技能/51 遗物均可加载；`menu_test`、`spawn_phase_test`、`mobile_controls_test` 均退出 0。仍需在手机上验收最终 APK 的渲染与触控。
+
 ## Codex 更新（2026-10-27，Android 触屏第一版）
 
 - `GameInput.touch_controls_active` 在移动平台自动启用，可用 `--mobile-controls-test` 在电脑模拟。`MobileControls` 接入主场景：左下区域浮动霓虹摇杆，10 px 死区、57 px 达满速、外环慢速跟随；双指独立，移动中可轻点切色、左右滑动切色或长按预览。手机端不触发左键手动瞄准，仍自动索敌。安卓返回暂停/恢复，切后台自动暂停；桌面键鼠操作保留。
