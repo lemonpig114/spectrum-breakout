@@ -8,6 +8,8 @@ var core: WeaponCoreResource
 var stats := StatBlock.new()
 var pipeline := ModifierPipeline.new()
 var traits: Array[WeaponTraitResource] = []
+var owned_forms: Array[StringName] = []
+var primary_form: StringName = &""
 
 
 func _init(core_resource: WeaponCoreResource = null) -> void:
@@ -41,6 +43,34 @@ func set_core(core_resource: WeaponCoreResource) -> void:
 func add_trait(weapon_trait: WeaponTraitResource) -> void:
 	if weapon_trait != null and not traits.has(weapon_trait):
 		traits.append(weapon_trait)
+
+
+func acquire_form(id: StringName) -> bool:
+	if owned_forms.has(id):
+		return false
+	var weapon_trait := ContentDB.get_data(id) as WeaponTraitResource
+	if weapon_trait == null:
+		return false
+	owned_forms.append(id)
+	add_trait(weapon_trait)
+	if primary_form == &"":
+		primary_form = id
+	return true
+
+
+func select_primary(id: StringName) -> bool:
+	if not owned_forms.has(id):
+		return false
+	primary_form = id
+	return true
+
+
+func has_form(id: StringName) -> bool:
+	return owned_forms.has(id)
+
+
+func primary_data() -> WeaponTraitResource:
+	return ContentDB.get_data(primary_form) as WeaponTraitResource
 
 
 func get_stat(stat_name: StringName) -> float:

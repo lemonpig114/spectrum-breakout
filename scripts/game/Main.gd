@@ -2,6 +2,8 @@ extends Node2D
 
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
 const ENEMY_BATCH_RENDERER := preload("res://scripts/enemies/EnemyBatchRenderer.gd")
+const WEAPON_CHOICE_PANEL := preload("res://scripts/ui/WeaponChoicePanel.gd")
+const DEBUG_CONSOLE := preload("res://scripts/ui/DebugConsole.gd")
 const PERFORMANCE_RECORDER := preload("res://scripts/game/PerformanceRecorder.gd")
 const SUMMON_FIELD := preload("res://scripts/skills/SummonField.gd")
 const MENU_SCENE := "res://scenes/character_select.tscn"
@@ -39,6 +41,9 @@ var _pending_altar: Altar
 var _manual_paused := false
 var _vacuum_merchant: Merchant
 var _vacuum_timer := 0.0
+var weapon_choice_panel: WeaponChoicePanel
+var _weapon_rewards: Array[String] = []
+var debug_console: DebugConsole
 
 
 func _ready() -> void:
@@ -60,9 +65,16 @@ func _ready() -> void:
 		add_child(recorder)
 		recorder.setup(self)
 	_spawn_player()
+	projectile_manager.combat.player = player
 	world.add_child(ENEMY_BATCH_RENDERER.new())
+	weapon_choice_panel = WEAPON_CHOICE_PANEL.new()
+	$HUD.add_child(weapon_choice_panel)
+	if OS.is_debug_build() and not OS.has_feature("mobile"):
+		debug_console = DEBUG_CONSOLE.new()
+		$HUD.add_child(debug_console)
+		debug_console.setup(self)
 	var modal_panels: Array[Control] = [
-		level_up_panel, shop_panel, altar_panel, pause_panel, game_over_panel
+		level_up_panel, shop_panel, altar_panel, pause_panel, game_over_panel, weapon_choice_panel
 	]
 	mobile_controls.bind(player, pause_button, $HUD/RelicChoicePanel, modal_panels)
 	Skills.bind_player(player)
@@ -77,6 +89,9 @@ func _ready() -> void:
 	camera.setup(player, ARENA_RECT)
 	Director.setup(world)
 	EventBus.player_died.connect(_on_player_died)
+	EventBus.enemy_killed.connect(_on_enemy_killed_for_weapon)
+	EventBus.weapon_reward_requested.connect(_queue_weapon_reward)
+	weapon_choice_panel.finished.connect(_on_weapon_reward_finished)
 	EventBus.level_up.connect(_on_level_up)
 	EventBus.merchant_reached.connect(_on_merchant_reached)
 	EventBus.altar_reached.connect(_on_altar_reached)
@@ -343,7 +358,7 @@ func _flush_pending_events() -> void:
 	if RunState.is_dead:
 		return
 	if level_up_panel.visible or shop_panel.visible or altar_panel.visible \
-			or pause_panel.visible or _manual_paused:
+			or pause_panel.visible or weapon_choice_panel.visible or _manual_paused:
 		return
 
 	if _pending_merchant != null and is_instance_valid(_pending_merchant):
@@ -355,6 +370,30 @@ func _flush_pending_events() -> void:
 		var altar := _pending_altar
 		_pending_altar = null
 		_open_altar(altar)
+		return
+	if not _weapon_rewards.is_empty():
+		var source: String = _weapon_rewards.pop_front()
+		hud_control.visible = false
+		RunState.request_pause(&"weapon_reward")
+		if not weapon_choice_panel.open_reward(player, source):
+			RunState.add_gold(100)
+			_on_weapon_reward_finished()
+
+
+func _on_enemy_killed_for_weapon(enemy: Node, _gold: int, _xp: float) -> void:
+	if enemy is Enemy and enemy.type_data != null and enemy.type_data.is_boss:
+		_queue_weapon_reward.call_deferred("Boss 宝箱")
+
+
+func _queue_weapon_reward(source: String) -> void:
+	_weapon_rewards.append(source)
+	_flush_pending_events()
+
+
+func _on_weapon_reward_finished() -> void:
+	hud_control.visible = true
+	RunState.release_pause(&"weapon_reward")
+	_flush_pending_events()
 
 
 # ── 手动暂停 ─────────────────────────────────────────────────────

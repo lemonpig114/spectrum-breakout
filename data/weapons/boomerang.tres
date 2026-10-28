@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"boomerang"
+display_name = "回旋镖"
+description = "飞出后返回，返回段可无限穿透。"
+brief = "飞行 · 折返"
+tags = Array[StringName]([&"projectile", &"return"])

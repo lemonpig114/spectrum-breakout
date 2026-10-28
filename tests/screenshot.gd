@@ -24,6 +24,8 @@ extends Node
 ##   pause_quit     暂停面板的退出确认页
 ##   shotgun   四阶散弹一次 6 发，检查固定扇面的分道效果
 ##   clone     主角与简化分身的造型对比
+##   weapon    武器三选一面板
+##   console   桌面调试控制台
 
 
 func _ready() -> void:
@@ -43,7 +45,7 @@ func _ready() -> void:
 		"selector", "levelup", "panic", "fx", "supercrit", "switch",
 		"styles", "hearts", "pickups", "merchant", "merchant_arrow", "shop",
 		"shop_full", "pause", "pause_build", "pause_relics", "pause_damage", "pause_settings",
-		"pause_quit", "shotgun", "clone", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
+		"pause_quit", "shotgun", "clone", "weapon", "console", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
 	]:
 		if args.has(candidate):
 			mode = candidate
@@ -121,6 +123,17 @@ func _ready() -> void:
 	elif mode == "shotgun":
 		_setup_shotgun_demo(main)
 		await get_tree().create_timer(0.30).timeout
+	elif mode == "weapon":
+		Director.stop()
+		main._queue_weapon_reward("Boss 宝箱")
+		await get_tree().create_timer(0.12).timeout
+	elif mode == "console":
+		var toggle := InputEventKey.new()
+		toggle.pressed = true
+		toggle.physical_keycode = KEY_QUOTELEFT
+		main.debug_console._unhandled_key_input(toggle)
+		main.debug_console._submit("help")
+		await get_tree().create_timer(0.12).timeout
 	elif mode == "clone":
 		Director.stop()
 		main.player.controls_enabled = false
@@ -222,6 +235,10 @@ func _ready() -> void:
 		path = "res://tests/screenshot_pause_quit.png"
 	elif mode == "shotgun":
 		path = "res://tests/screenshot_shotgun.png"
+	elif mode == "weapon":
+		path = "res://tests/screenshot_weapon.png"
+	elif mode == "console":
+		path = "res://tests/screenshot_console.png"
 	elif mode == "clone":
 		path = "res://tests/screenshot_clone.png"
 	elif mode == "boss":

@@ -53,7 +53,7 @@ func _ready() -> void:
 
 func _test_catalog_rules() -> void:
 	failures += _check(Skills.nodes.size() == 76, "76 skill nodes")
-	failures += _check(Skills.relics.size() == 51, "51 relics")
+	failures += _check(Skills.relics.size() == 52, "52 relics")
 	failures += _check(Skills.get_available_nodes().size() == 19, "all nineteen tier-1 nodes start available")
 
 	failures += _check(Skills.is_available(Skills.get_node_by_id(&"fire_1")), "tier 1 available")

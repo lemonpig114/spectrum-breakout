@@ -85,7 +85,7 @@ func _ready() -> void:
 		"player uses the shared base attack"
 	)
 	failures += _check(Skills.nodes.size() == 76, "skill tree has 76 nodes")
-	failures += _check(Skills.relics.size() == 51, "relic pool has 51 relics")
+	failures += _check(Skills.relics.size() == 52, "relic pool has 52 relics")
 	failures += _check(not Skills.get_available_nodes().is_empty(), "skill tree offers starting nodes")
 
 	# 手动暂停：Esc / 右上角按钮走同一条路径，关闭后恢复 HUD。

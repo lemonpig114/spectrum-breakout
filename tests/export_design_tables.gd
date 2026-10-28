@@ -8,7 +8,7 @@ const RELIC_PATH := "res://遗物设计表.md"
 func _ready() -> void:
 	var skills := SkillCatalog.build()
 	var relics := SkillCatalog.build_relics()
-	if skills.size() != 76 or relics.size() != 51:
+	if skills.size() != 76 or relics.size() != 52:
 		push_error("设计表导出中止：技能/遗物数量与预期不符")
 		get_tree().quit(1)
 		return
@@ -48,7 +48,7 @@ func _write_relics(relics: Array[RelicResource]) -> void:
 		"# 遗物设计表（当前实装）",
 		"",
 		"> 数据源：`scripts/skills/SkillCatalog.gd`。运行 `res://tests/export_design_tables.tscn` 可在数值改动后刷新；脚本按 ID 保留最后一列的策划备注。完整结算与获取规则见 `docs/RELICS.md`。",
-		"> 当前 51 件；基础价格会随局内时间增长。拾取条显示短句，详细数值以当前效果列为准。",
+		"> 当前 52 件；基础价格会随局内时间增长。拾取条显示短句，详细数值以当前效果列为准。",
 		"",
 		"| 品质 | ID | 名称 | 来源限制 | 基础价 | 持有上限 | 当前效果 | 拾取短句 | 策划备注 |",
 		"| --- | --- | --- | --- | ---: | --- | --- | --- | --- |",

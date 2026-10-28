@@ -12,10 +12,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	var panel: Control = screen._codex_panel
 	check(panel.visible, "codex opens")
-	check(panel.entries.size() == 136, "76 skills + 51 relics + 6 enemies + 3 guides")
+	check(panel.entries.size() == 137, "76 skills + 52 relics + 6 enemies + 3 guides")
 	for i in 4:
 		panel.set_category(i)
-		check(panel.filtered.size() == [76, 51, 6, 3][i], "category count")
+		check(panel.filtered.size() == [76, 52, 6, 3][i], "category count")
 		for j in panel.filtered.size():
 			panel.show_entry(j)
 			check(not panel.detail.text.is_empty(), "detail content")

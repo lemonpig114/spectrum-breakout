@@ -23,7 +23,11 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
   uses swap removal with `active_index`. Benchmark with `tests/_perf_probe.tscn -- --projectiles=300`; use
   `--no-enemy-batch` / `--no-projectile-batch` for visual or performance comparisons.
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
-- 19 skill branches × 4 tiers = **76 nodes**, **51 relics**, shop, luck/chests, manual pause, altars, audio.
+- 19 skill branches × 4 tiers = **76 nodes**, **52 relics**, shop, luck/chests, manual pause, altars, audio.
+- First weapon fusion slice: four forms (sword/lightning/star/boomerang), Boss reward or unique epic relic,
+  player-selected primary form, secondary mechanics only. `WeaponCombat` resolves direct hits and drains a bounded
+  derivative FIFO. Desktop debug builds expose a tilde console (`w`, `primary`, `e`, `boss`, `gold`, `xp`, `clear`, `fps`).
+  See `docs/WEAPONS.md`; Android has no console.
 - Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.
   Selection is stored in `RunState.selected_character_id`; running `main.tscn` directly falls back to `prism`.
 - Three units (`prism`, `bulwark`, `falcon`) share `CharacterResource.BASE_WEAPON_ID = basic_bolt`; their differences
@@ -59,7 +63,7 @@ Current rules (round 20 + follow-up):
 | `docs/HISTORY.md` | Compact archived details of rounds 1–19 (round 20 lives in HANDOFF). |
 | `docs/AUDIO.md` | 24 sound ids, source mapping, CC0 licenses, replacement convention. |
 | `docs/SKILLS.md` | All 76 implemented skill nodes by branch: prerequisites, effects, runtime mechanics. |
-| `docs/RELICS.md` | All 51 relics by quality/side: base price, tags, effects, acquisition rules. |
+| `docs/RELICS.md` | All 52 relics by quality/side: base price, tags, effects, acquisition rules. |
 | `docs/DESIGN_NOTES.md` | Quality names, shop/luck/altar economy, design-vs-implementation deltas. |
 | `人类用.md` | User's active design list; implemented items are marked **[complete]**. Re-read before editing because Claude Code may update it. |
 
@@ -238,7 +242,7 @@ It owns modal routing and `_flush_pending_events()` (merchant first, then altar)
 | `skills_test` | every branch, gating, demon/angel exclusion, caps, heavy charge, dodge/crit, elements, shotgun fan, luck, pickup radius |
 | `autoplay_test` | 30 s random build + combat; unlocks consistent, director still spawning, run unpaused |
 | `menu_test` | 3 characters, selection, boot→select, Main applies character multipliers to `basic_bolt`, game-over retry/menu buttons and pause-menu return signal |
-| `relics_test` | all 51 relics, stacking/unique, apple, blunt blade, heart units, lucky tier, impact releaser synergy |
+| `relics_test` | all 52 relics, stacking/unique, apple, blunt blade, heart units, lucky tier, impact releaser synergy |
 | `pickups_test` | magnet/arrival credit, scatter, merge, chests, clamped steps, radius growth, gold speed, merchant vacuum, streaks, pool caps |
 | `merchant_test` | 1:20 timing, vacuum-before-shop, shelf-clear −10 s (once per visit), one-at-a-time, pause/shop, 4 slots, donation, unique exclusion, buy/reroll/heal/leave, side gating, 14-card layout |
 | `audio_test` | ≥20 sounds, non-empty streams, synth fallbacks, throttle, mute, 20-voice cap, event wiring |

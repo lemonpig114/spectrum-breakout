@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"star"
+display_name = "星星"
+description = "80% 武器伤害；首次命中散出五枚半伤害星片。"
+brief = "弹体 · 五向分裂"
+damage_scale = 0.8
+tags = Array[StringName]([&"projectile", &"split"])

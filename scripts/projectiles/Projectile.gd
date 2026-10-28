@@ -21,6 +21,17 @@ var _owns_shape := false
 var _hit_ids: Dictionary = {}
 var active_index := -1
 var batch_rendered := false
+var batch_star := false
+var weapon: WeaponRuntime
+var budget: Dictionary = {}
+var shot_scale := 1.0
+var can_split := true
+var chain_triggered := false
+var sword_triggered := false
+var _returning := false
+var _outward_origin := Vector2.ZERO
+var _return_hit_ids: Dictionary = {}
+var is_derived := false
 
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 
@@ -43,10 +54,23 @@ func setup(
 	speed_scale: float = 1.0,
 	lifetime_scale: float = 1.0,
 	crit_allowed: bool = true,
-	shot_source: StringName = &""
+	shot_source: StringName = &"",
+	weapon_runtime: WeaponRuntime = null,
+	attack_budget: Dictionary = {},
+	split_allowed: bool = true
 ) -> void:
 	manager = owner_manager
+	weapon = weapon_runtime
+	budget = attack_budget
+	shot_scale = damage_scale
+	can_split = split_allowed
+	is_derived = weapon_runtime != null and not split_allowed and shot_source == &"weapon:star"
+	chain_triggered = false
+	sword_triggered = false
+	_returning = false
+	_return_hit_ids.clear()
 	global_position = origin
+	_outward_origin = origin
 
 	direction = shot_direction.normalized()
 	rotation = direction.angle()
@@ -64,14 +88,17 @@ func setup(
 	damage_bonus_ratios = Skills.projectile_bonus_ratios(stats, color_value, heavy)
 	projectile_size = stats.get_value(&"projectile_size") * size_scale
 	is_heavy = heavy
-	batch_rendered = not heavy and owner_manager.batch_enabled
+	batch_star = weapon != null and (weapon.primary_form == &"star" or shot_source == &"weapon:star")
+	batch_rendered = not heavy and owner_manager.batch_enabled and \
+		(weapon == null or (weapon.primary_form != &"boomerang" and source_kind != &"weapon:sword"))
 	if is_heavy:
 		damage = (raw_damage + 40.0) * damage_mult * damage_final * 2.5 * damage_scale
 		projectile_size *= 1.5
 
 	lifetime = stats.get_value(&"projectile_lifetime") * lifetime_scale
-	# 裂片类小子弹不继承穿透，也不继承暴击。
-	pierce = 0 if damage_scale < 0.99 or source_kind == &"clone" else int(stats.get_value(&"pierce"))
+	# 主形态的伤害倍率不取消穿透；只有裂片、分身等派生弹不继承穿透。
+	pierce = 0 if source_kind == &"clone" or (weapon_runtime == null and damage_scale < 0.99) \
+		or (weapon_runtime != null and not split_allowed) else int(stats.get_value(&"pierce"))
 	projectile_sides = core.projectile_sides if core != null else 4
 	color_index = color_value
 
@@ -87,10 +114,36 @@ func setup(
 
 func _physics_process(delta: float) -> void:
 	_age += delta
+	if weapon != null and weapon.has_form(&"boomerang"):
+		if _returning:
+			if manager.combat.player == null or not is_instance_valid(manager.combat.player):
+				_release()
+				return
+			var to_player: Vector2 = manager.combat.player.global_position - global_position
+			if to_player.length() <= 20.0:
+				_release()
+				return
+			direction = to_player.normalized()
+			rotation = direction.angle()
+		elif global_position.distance_to(_outward_origin) >= 340.0:
+			_begin_return()
 	global_position += direction * speed * delta
 
-	if _age >= lifetime or not RunState.arena_rect.grow(64.0).has_point(global_position):
+	if _age >= (4.0 if weapon != null and weapon.has_form(&"boomerang") else lifetime) \
+			or not RunState.arena_rect.grow(64.0).has_point(global_position):
 		_release()
+
+
+func _begin_return() -> void:
+	if _returning:
+		return
+	_returning = true
+	_return_hit_ids.clear()
+	if weapon != null and weapon.primary_form == &"boomerang" and weapon.has_form(&"sword"):
+		manager.combat.enqueue({"kind": &"sword", "origin": global_position,
+			"direction": direction, "damage": damage * 0.6,
+			"color": color_index, "heavy": false, "weapon": weapon,
+			"budget": budget, "secondary": true})
 
 
 func _on_body_entered(body: Node2D) -> void:
@@ -104,61 +157,25 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	var instance_id := enemy.get_instance_id()
-	if _hit_ids.has(instance_id):
+	if _returning and _return_hit_ids.has(instance_id):
 		return
-	_hit_ids[instance_id] = true
+	if not _returning and _hit_ids.has(instance_id):
+		return
+	if _returning:
+		_return_hit_ids[instance_id] = true
+	else:
+		_hit_ids[instance_id] = true
 
-	var first_hit := _hit_ids.size() == 1
-	var last_hit := pierce <= 0
+	var first_hit := _hit_ids.size() == 1 and not _returning
+	var last_hit := pierce <= 0 or _returning
+	manager.combat.on_projectile_hit(self, enemy, first_hit, last_hit)
 
-	var context := Skills.build_hit_context(self, enemy, damage, color_index, source_kind != &"clone", allow_crit)
-	if source_kind == &"clone":
-		context.add_tag(&"clone")
-	enemy.take_damage(context)
-	if source_kind != &"clone":
-		Skills.apply_relic_projectile_procs(enemy)
-
-	var weakness := context.has_tag(&"weakness")
-	# 命中音按结算结果分层；同帧多弹丸由 Audio 的冷却合并。
-	var hit_sound := &"hit"
-	if context.has_tag(&"super_crit"):
-		hit_sound = &"super_crit"
-	elif context.is_crit:
-		hit_sound = &"crit"
-	elif weakness:
-		hit_sound = &"weak_hit"
-	elif is_heavy:
-		hit_sound = &"hit_heavy"
-	Audio.play(hit_sound)
-	if not enemy.is_dead and source_kind != &"clone":
-		if weakness:
-			Skills.on_weakness_hit(enemy, damage, color_index)
-		Skills.try_execute(enemy, weakness)
-		if Skills.is_unlocked(&"heavy_2") and (enemy.type_data == null or not enemy.type_data.is_boss):
-			enemy.apply_knockback(global_position, 300.0, 0.18)
-
-	if source_kind != &"clone":
-		Skills.try_gold_on_hit(global_position)
-
-	var emphasis := weakness or context.is_crit
-	var burst_color := RunState.color_of(color_index)
-	if context.has_tag(&"super_crit"):
-		burst_color = Color(2.8, 2.8, 2.8, 1.0)
-	elif emphasis:
-		burst_color = burst_color.lerp(Color.WHITE, 0.25)
-	# 普通命中只有几颗小火花；暴击与重型弹额外带一圈短促爆点。
-	FX.hit_spark(global_position, burst_color, emphasis)
-	FX.hit_impact(global_position, burst_color, direction)
-	if context.is_crit:
-		FX.hit_burst(global_position, burst_color, 22.0, 0.16, EnergyBurst.STYLE_STAR)
-	if is_heavy:
-		FX.hit_burst(global_position, burst_color, 38.0, 0.28, EnergyBurst.STYLE_HEAVY)
-
-	if source_kind != &"clone" and Skills.has_splash() and (Skills.splash_every_hit() or first_hit or last_hit):
-		Skills.apply_splash(global_position, context.amount, color_index, enemy)
-
+	if _returning:
+		return
 	if pierce > 0:
 		pierce -= 1
+	elif weapon != null and weapon.has_form(&"boomerang"):
+		_begin_return()
 	else:
 		_release()
 
@@ -195,6 +212,23 @@ func _draw() -> void:
 		return
 	var c := RunState.color_of(color_index)
 	var s := projectile_size
+	if weapon != null and (weapon.primary_form == &"boomerang" or source_kind == &"weapon:sword"):
+		var points := PackedVector2Array([
+			Vector2(s * 1.8, -s * 0.8), Vector2(s * 0.2, 0),
+			Vector2(s * 1.8, s * 0.8), Vector2(-s * 1.2, s * 0.5),
+			Vector2(-s * 1.7, 0), Vector2(-s * 1.2, -s * 0.5),
+		])
+		draw_colored_polygon(points, Color(c.r * 0.25, c.g * 0.25, c.b * 0.25))
+		draw_polyline(PackedVector2Array([points[0], points[1], points[2]]), c, 2.5, true)
+		draw_line(points[5], points[3], c, 2.0, true)
+		return
+	if weapon != null and (weapon.primary_form == &"star" or source_kind == &"weapon:star"):
+		var points := PackedVector2Array()
+		for i in 10:
+			points.append(Vector2.from_angle(TAU * float(i) / 10.0) * s * (1.75 if i % 2 == 0 else 0.75))
+		draw_colored_polygon(points, c)
+		draw_circle(Vector2.ZERO, s * 0.36, Color(2.5, 2.5, 2.5))
+		return
 	# 尾焰使用顶点透明度渐变，不增加节点；尾端完全透明。
 	var tail := minf(speed * 0.045, s * (9.0 if is_heavy else 7.0))
 	var tail_color := Color(c.r, c.g, c.b, 0.26)

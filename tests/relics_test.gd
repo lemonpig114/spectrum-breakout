@@ -53,9 +53,9 @@ func _test_catalog() -> void:
 				dust += 1
 		else:
 			sided += 1
-	failures += _check(Skills.relics.size() == 51, "51 relics in the catalog")
+	failures += _check(Skills.relics.size() == 52, "52 relics in the catalog")
 	failures += _check(dust == 10, "10 dust-tier relics")
-	failures += _check(neutral == 47, "47 neutral relics")
+	failures += _check(neutral == 48, "48 neutral relics")
 	failures += _check(sided == 4, "4 demon/angel relics")
 
 	var unique_sided := 0

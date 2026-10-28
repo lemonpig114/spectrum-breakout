@@ -187,7 +187,7 @@ func record_projectile_damage(context: DamageContext, dealt: float) -> void:
 	if ice > 0.0:
 		record_damage(&"skill:weak_3_ice", ice)
 	dealt -= ice
-	record_damage(&"base", dealt)
+	record_damage(StringName("weapon:%s" % String(context.weapon_id)) if context.weapon_id != &"" else &"base", dealt)
 	if context.source is Projectile:
 		var projectile := context.source as Projectile
 		for key in projectile.damage_bonus_ratios:
@@ -252,6 +252,9 @@ func damage_source_name(key: StringName) -> String:
 	if parts[0] == "skill":
 		var node := get_node_by_id(StringName(parts[1]))
 		return node.display_name if node != null else parts[1]
+	if parts[0] == "weapon":
+		var weapon_data := ContentDB.get_data(StringName(parts[1])) as WeaponTraitResource
+		return weapon_data.display_name if weapon_data != null else parts[1]
 	for relic in relics:
 		if String(relic.id) == parts[1]:
 			return relic.display_name
@@ -1459,6 +1462,8 @@ func grant_relic(id: StringName, value_multiplier: float = 1.0) -> bool:
 
 	owned_relics.append(relic)
 	_apply_relic(relic, value_multiplier, "")
+	if relic.id == &"epic_weapon_cache":
+		EventBus.weapon_reward_requested.emit("武装密钥")
 	if relic.id == &"rare_golden_apple":
 		player.heal(player.max_health)
 	elif relic.id == &"rare_bond":

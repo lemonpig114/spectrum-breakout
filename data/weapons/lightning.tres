@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lightning"
+display_name = "闪电"
+description = "瞬发命中并弹射一次；穿透追加 50% 伤害的链段。"
+brief = "瞬发 · 弹射"
+tags = Array[StringName]([&"instant", &"chain"])

@@ -8,3 +8,6 @@ extends Resource
 @export var description: String = ""
 @export var tags: Array[StringName] = []
 @export var priority: int = 0
+@export var damage_scale: float = 1.0
+@export var fire_rate_scale: float = 1.0
+@export var brief: String = ""

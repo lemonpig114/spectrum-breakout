@@ -477,6 +477,9 @@ func _fire(shoot_direction: Vector2) -> void:
 	var base_angle := base_direction.angle()
 
 	var rate := weapon.get_final_fire_rate()
+	var primary_data := weapon.primary_data()
+	if primary_data != null:
+		rate *= primary_data.fire_rate_scale
 	var cap := rate
 	if weapon.core != null:
 		# 上限也按机体倍率缩放，否则游隼的基础射速会吃掉技能给的成长空间。
@@ -504,14 +507,8 @@ func _fire(shoot_direction: Vector2) -> void:
 			# 侧移枪口而不是张开角度，让两发保持平行且围绕瞄准线对称。
 			var half_gap := maxf(4.0, weapon_stats.get_value(&"projectile_size") * 1.1 * (1.5 if heavy else 1.0))
 			origin += shot_direction.orthogonal() * half_gap * (1.0 if i == 0 else -1.0)
-		projectile_manager.fire(
-			origin,
-			shot_direction,
-			weapon_stats,
-			color_index,
-			weapon.core,
-			heavy
-		)
+		projectile_manager.combat.fire_weapon(origin, shot_direction, weapon_stats,
+			color_index, heavy, weapon)
 
 	# 子弹壳：普通射击后有概率立刻连射，下一次间隔压到射速上限对应的间隔。
 	if not heavy and Skills.roll_chain_fire():

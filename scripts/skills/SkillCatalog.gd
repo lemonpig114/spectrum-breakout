@@ -742,6 +742,11 @@ static func build_relics() -> Array[RelicResource]:
 
 	# ── 炬火：中后期构筑方向 ──
 	relics.append(_relic(
+		&"epic_weapon_cache", "武装密钥", "选择一件新武器；同种武器不会重复获得",
+		&"", RelicResource.RARITY_EPIC, [], 120,
+		false, 0.0, 0.0, true
+	))
+	relics.append(_relic(
 		&"epic_health_crystal", "生命水晶", "生命上限 +1 颗心",
 		&"", RelicResource.RARITY_EPIC,
 		[_mod(&"max_health", OP_FLAT, 1.0, T_P)], 90

@@ -28,6 +28,7 @@ var _pickup_redraw_60 := false
 var _pickup_full_detail := false
 var _target_enemies := TARGET_ENEMIES
 var _target_projectiles := 0
+var _weapon_forms: Array[StringName] = []
 var _spawn_timer := 0.0
 var _remaining := DURATION
 var _warmup := WARMUP
@@ -81,6 +82,8 @@ func _ready() -> void:
 			_target_enemies = maxi(1, int(arg.get_slice("=", 1)))
 		elif arg.begins_with("--projectiles="):
 			_target_projectiles = maxi(0, int(arg.get_slice("=", 1)))
+		elif arg.begins_with("--weapon=") or arg.begins_with("--fuse="):
+			_weapon_forms.append(StringName(arg.get_slice("=", 1)))
 		elif arg.begins_with("--seconds="):
 			_remaining = maxf(3.0, float(arg.get_slice("=", 1)))
 
@@ -97,6 +100,8 @@ func _ready() -> void:
 	RunState.level = 1000000
 	RunState.xp = 0
 	_main.player.set("_invuln", 9999.0)
+	for id in _weapon_forms:
+		_main.player.weapon.acquire_form(id)
 
 	if not _no_skills:
 		for node in Skills.nodes:
@@ -267,4 +272,8 @@ func _fill_projectiles(count: int) -> void:
 		var origin := player.global_position + Vector2.from_angle(angle) * _rng.randf_range(40.0, 350.0)
 		_main.projectile_manager.fire(origin, Vector2.from_angle(angle + PI * 0.5),
 			player.weapon.stats, i % 3, player.weapon.core, false,
-			1.0, 1.0, 1.0, 3.0)
+			player.weapon.primary_data().damage_scale if not _weapon_forms.is_empty() else 1.0,
+			1.0, 1.0, 3.0, true,
+			StringName("weapon:%s" % String(player.weapon.primary_form)) if not _weapon_forms.is_empty() else &"",
+			player.weapon if not _weapon_forms.is_empty() else null,
+			_main.projectile_manager.combat.new_budget())

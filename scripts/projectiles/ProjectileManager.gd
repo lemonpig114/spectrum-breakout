@@ -6,13 +6,17 @@ extends Node2D
 
 const PROJECTILE_SCENE := preload("res://scenes/projectiles/projectile.tscn")
 const BATCH_RENDERER := preload("res://scripts/projectiles/ProjectileBatchRenderer.gd")
+const WEAPON_COMBAT := preload("res://scripts/weapon/WeaponCombat.gd")
 const MAX_POOL := 512
 const PREWARM_COUNT := 64
+const MAX_DERIVED_ACTIVE := 32
 
 var _pool: Array[Projectile] = []
 var _active: Array[Projectile] = []
 var batch_renderer: ProjectileBatchRenderer
 var batch_enabled := true
+var combat: WeaponCombat
+var derived_active := 0
 
 
 func _ready() -> void:
@@ -21,6 +25,9 @@ func _ready() -> void:
 	batch_renderer.manager = self
 	add_child(batch_renderer)
 	batch_renderer.set_process(batch_enabled)
+	combat = WEAPON_COMBAT.new()
+	combat.manager = self
+	add_child(combat)
 	# 预先创建子弹节点，避免第一次开火时的实例化/碰撞体构建尖峰。
 	for i in PREWARM_COUNT:
 		_pool.append(_create_pooled())
@@ -47,8 +54,14 @@ func fire(
 	speed_scale: float = 1.0,
 	lifetime_scale: float = 1.0,
 	allow_crit: bool = true,
-	source_kind: StringName = &""
+	source_kind: StringName = &"",
+	weapon: WeaponRuntime = null,
+	budget: Dictionary = {},
+	can_split: bool = true
 ) -> void:
+	var derived := weapon != null and not can_split and source_kind == &"weapon:star"
+	if derived and derived_active >= MAX_DERIVED_ACTIVE:
+		return
 	var projectile: Projectile = null
 
 	while not _pool.is_empty():
@@ -65,10 +78,12 @@ func fire(
 
 	projectile.setup(
 		self, origin, direction, stats, color_index, core, heavy, damage_scale, size_scale,
-		speed_scale, lifetime_scale, allow_crit, source_kind
+		speed_scale, lifetime_scale, allow_crit, source_kind, weapon, budget, can_split
 	)
 	projectile.active_index = _active.size()
 	_active.append(projectile)
+	if derived:
+		derived_active += 1
 
 
 func release(projectile: Projectile) -> void:
@@ -85,6 +100,9 @@ func release(projectile: Projectile) -> void:
 		moved.active_index = index
 	_active.pop_back()
 	projectile.active_index = -1
+	if projectile.is_derived:
+		derived_active = maxi(0, derived_active - 1)
+		projectile.is_derived = false
 
 	projectile.visible = false
 	projectile.collision_mask = 0

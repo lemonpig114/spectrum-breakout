@@ -23,6 +23,7 @@ signal player_died
 signal game_paused(paused: bool)
 
 signal enemy_killed(enemy: Node, gold: int, xp: float)
+signal weapon_reward_requested(source: String)
 signal gold_changed(gold: int)
 signal xp_changed(xp: int, level: int)
 signal level_up(level: int)

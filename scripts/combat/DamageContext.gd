@@ -15,6 +15,7 @@ var hit_position: Vector2 = Vector2.ZERO
 var tags: Array[StringName] = []
 var is_crit: bool = false
 var is_killing_blow: bool = false
+var weapon_id: StringName = &""
 
 
 func add_tag(tag: StringName) -> void:

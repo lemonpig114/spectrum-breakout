@@ -32,7 +32,7 @@ func _test_luck() -> void:
 	for relic in Skills.relics:
 		if relic.brief_description.is_empty() or relic.brief_description.contains("\n"):
 			briefs_complete = false
-	_check(briefs_complete, "all 51 relics provide a one-line brief description")
+	_check(briefs_complete, "all 52 relics provide a one-line brief description")
 	Skills.unlock(&"luck_1")
 	_check(Skills.luck() == 12 and is_equal_approx(Skills.chest_drop_chance(), 0.044), "first tier improves early resource drops")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.10), "base relic conversion is 10 percent")
