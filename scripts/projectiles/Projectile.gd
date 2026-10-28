@@ -90,7 +90,7 @@ func setup(
 	is_heavy = heavy
 	batch_star = weapon != null and (weapon.primary_form == &"star" or shot_source == &"weapon:star")
 	batch_rendered = not heavy and owner_manager.batch_enabled and \
-		(weapon == null or (weapon.primary_form != &"boomerang" and source_kind != &"weapon:sword"))
+		(weapon == null or weapon.primary_form != &"boomerang")
 	if is_heavy:
 		damage = (raw_damage + 40.0) * damage_mult * damage_final * 2.5 * damage_scale
 		projectile_size *= 1.5
@@ -212,7 +212,7 @@ func _draw() -> void:
 		return
 	var c := RunState.color_of(color_index)
 	var s := projectile_size
-	if weapon != null and (weapon.primary_form == &"boomerang" or source_kind == &"weapon:sword"):
+	if weapon != null and weapon.primary_form == &"boomerang":
 		var points := PackedVector2Array([
 			Vector2(s * 1.8, -s * 0.8), Vector2(s * 0.2, 0),
 			Vector2(s * 1.8, s * 0.8), Vector2(-s * 1.2, s * 0.5),

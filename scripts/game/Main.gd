@@ -390,6 +390,13 @@ func _queue_weapon_reward(source: String) -> void:
 	_flush_pending_events()
 
 
+func open_debug_weapon_choice() -> void:
+	hud_control.visible = false
+	RunState.request_pause(&"weapon_reward")
+	if not weapon_choice_panel.open_primary_choice(player, "控制台获得武器"):
+		_on_weapon_reward_finished()
+
+
 func _on_weapon_reward_finished() -> void:
 	hud_control.visible = true
 	RunState.release_pause(&"weapon_reward")

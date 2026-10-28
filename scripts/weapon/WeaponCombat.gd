@@ -7,8 +7,10 @@ const DERIVATIVES_PER_ATTACK := 128
 const QUEUE_LIMIT := 4096
 const VISUAL_LIMIT := 160
 const DERIVATIVES_PER_FRAME := 8
-const SWORD_RANGE := 110.0
-const SWORD_HALF_ANGLE := PI / 3.0
+const SWORD_WAVE_DISTANCE := 145.0
+const SWORD_WAVE_WIDTH := 108.0
+const SWORD_WAVE_DEPTH := 34.0
+const SWORD_WAVE_DURATION := 0.28
 const CHAIN_RANGE := 210.0
 
 var manager
@@ -16,6 +18,7 @@ var player
 var _events: Array[Dictionary] = []
 var _head := 0
 var _visuals: Array[Dictionary] = []
+var _sword_waves: Array[Dictionary] = []
 var _derivative_frame := -1
 var _derivatives_this_frame := 0
 
@@ -37,6 +40,7 @@ func _physics_process(_delta: float) -> void:
 	elif _head > 512:
 		_events = _events.slice(_head)
 		_head = 0
+	_advance_sword_waves(_delta)
 
 
 func _process(delta: float) -> void:
@@ -45,21 +49,18 @@ func _process(delta: float) -> void:
 		_visuals[i].time = float(_visuals[i].time) - delta
 		if _visuals[i].time <= 0.0:
 			_visuals.remove_at(i)
-	if had_visuals:
+	if had_visuals or not _sword_waves.is_empty():
 		queue_redraw()
 
 
 func _draw() -> void:
+	for wave in _sword_waves:
+		_draw_sword_wave(wave)
 	for visual in _visuals:
 		var c := RunState.color_of(int(visual.color))
 		var alpha := clampf(float(visual.time) / 0.17, 0.0, 1.0)
-		if visual.kind == &"arc":
-			draw_arc(to_local(visual.position), float(visual.radius),
-				float(visual.angle) - SWORD_HALF_ANGLE, float(visual.angle) + SWORD_HALF_ANGLE,
-				28, Color(c.r, c.g, c.b, alpha), 5.0 * alpha, true)
-		else:
-			draw_line(to_local(visual.from), to_local(visual.to),
-				Color(c.r, c.g, c.b, alpha), 3.0 * alpha, true)
+		draw_line(to_local(visual.from), to_local(visual.to),
+			Color(c.r, c.g, c.b, alpha), 3.0 * alpha, true)
 
 
 func new_budget() -> Dictionary:
@@ -205,37 +206,102 @@ func on_projectile_hit(projectile: Node, enemy: Enemy, first_hit: bool, last_hit
 
 
 func _sword(event: Dictionary) -> void:
-	var origin: Vector2 = event.origin
-	var direction: Vector2 = event.direction
-	var weapon: WeaponRuntime = event.weapon
-	var first := true
-	_add_visual({"kind": &"arc", "position": origin, "radius": SWORD_RANGE,
-		"angle": direction.angle(), "color": event.color, "time": 0.17})
-	for node in get_tree().get_nodes_in_group(&"enemies"):
-		var enemy := node as Enemy
-		if enemy == null or enemy.is_dead:
-			continue
-		var offset := enemy.global_position - origin
-		if offset.length() > SWORD_RANGE + enemy.radius or absf(direction.angle_to(offset)) > SWORD_HALF_ANGLE:
-			continue
-		resolve_hit(self, enemy, float(event.damage), int(event.color), direction,
-			bool(event.heavy), &"weapon_sword", first, true, true, &"sword")
-		enemy.apply_knockback(origin, 220.0 if enemy.type_data == null or not enemy.type_data.is_boss else 55.0, 0.16)
-		if first and not bool(event.secondary):
-			if weapon.has_form(&"lightning"):
-				enqueue({"kind": &"lightning", "origin": enemy.global_position,
-					"direction": direction, "damage": float(event.damage) * 0.5,
-					"color": event.color, "heavy": false, "weapon": weapon,
-					"budget": event.budget, "secondary": true, "excluded": enemy})
-			if weapon.has_form(&"star"):
-				enqueue({"kind": &"split", "origin": enemy.global_position,
-					"direction": direction, "damage_scale": 0.6,
-					"color": event.color, "weapon": weapon, "budget": event.budget})
-		first = false
-	if weapon.has_form(&"boomerang") and not bool(event.secondary):
-		manager.fire(origin + direction * 25.0, direction, player.weapon.stats,
-			int(event.color), player.weapon.core, false, 0.6, 1.0, 1.0, 1.0,
-			true, &"weapon:sword", weapon, event.budget, false)
+	if _sword_waves.size() >= 48:
+		return
+	_sword_waves.append({
+		"origin": event.origin, "direction": (event.direction as Vector2).normalized(),
+		"age": 0.0, "returning": false, "hit_ids": {}, "return_ids": {},
+		"first_hit": true, "damage": event.damage, "color": event.color,
+		"heavy": event.heavy, "weapon": event.weapon, "budget": event.budget,
+		"secondary": event.secondary,
+		"can_return": not bool(event.secondary) and (event.weapon as WeaponRuntime).has_form(&"boomerang"),
+	})
+	queue_redraw()
+
+
+func _advance_sword_waves(delta: float) -> void:
+	for i in range(_sword_waves.size() - 1, -1, -1):
+		var wave: Dictionary = _sword_waves[i]
+		wave.age = float(wave.age) + delta
+		if float(wave.age) >= SWORD_WAVE_DURATION:
+			if bool(wave.can_return) and not bool(wave.returning):
+				wave.returning = true
+				wave.age = 0.0
+			else:
+				_sword_waves.remove_at(i)
+				queue_redraw()
+				continue
+		var progress := clampf(float(wave.age) / SWORD_WAVE_DURATION, 0.0, 1.0)
+		var distance := lerpf(22.0, SWORD_WAVE_DISTANCE, 1.0 - progress if bool(wave.returning) else progress)
+		var direction: Vector2 = wave.direction
+		var position: Vector2 = wave.origin + direction * distance
+		var side := direction.orthogonal()
+		var hit_ids: Dictionary = wave.return_ids if bool(wave.returning) else wave.hit_ids
+		for node in get_tree().get_nodes_in_group(&"enemies"):
+			var enemy := node as Enemy
+			if enemy == null or enemy.is_dead or hit_ids.has(enemy.get_instance_id()):
+				continue
+			var offset := enemy.global_position - position
+			if absf(offset.dot(direction)) > SWORD_WAVE_DEPTH * 0.5 + enemy.radius \
+					or absf(offset.dot(side)) > SWORD_WAVE_WIDTH * 0.5 + enemy.radius:
+				continue
+			hit_ids[enemy.get_instance_id()] = true
+			var first := bool(wave.first_hit)
+			wave.first_hit = false
+			resolve_hit(self, enemy, float(wave.damage) * (0.65 if bool(wave.returning) else 1.0),
+				int(wave.color), direction, bool(wave.heavy) and not bool(wave.returning),
+				&"weapon_sword", first, true, true, &"sword")
+			enemy.apply_knockback(wave.origin, 220.0 if enemy.type_data == null or not enemy.type_data.is_boss else 55.0, 0.16)
+			if first and not bool(wave.secondary) and not bool(wave.returning):
+				_sword_first_hit_effects(wave, enemy)
+
+
+func _sword_first_hit_effects(wave: Dictionary, enemy: Enemy) -> void:
+	var weapon: WeaponRuntime = wave.weapon
+	if weapon.has_form(&"lightning"):
+		enqueue({"kind": &"lightning", "origin": enemy.global_position,
+			"direction": wave.direction, "damage": float(wave.damage) * 0.5,
+			"color": wave.color, "heavy": false, "weapon": weapon,
+			"budget": wave.budget, "secondary": true, "excluded": enemy})
+	if weapon.has_form(&"star"):
+		enqueue({"kind": &"split", "origin": enemy.global_position,
+			"direction": wave.direction, "damage_scale": 0.6,
+			"color": wave.color, "weapon": weapon, "budget": wave.budget})
+
+
+func _draw_sword_wave(wave: Dictionary) -> void:
+	var progress := clampf(float(wave.age) / SWORD_WAVE_DURATION, 0.0, 1.0)
+	var fade := (1.0 - progress) * (0.72 if bool(wave.returning) else 1.0)
+	var distance := lerpf(22.0, SWORD_WAVE_DISTANCE, 1.0 - progress if bool(wave.returning) else progress)
+	var direction: Vector2 = wave.direction
+	var center: Vector2 = to_local(wave.origin + direction * distance)
+	var side := direction.orthogonal()
+	var color := RunState.color_of(int(wave.color))
+	var half_width := SWORD_WAVE_WIDTH * 0.5 * (0.82 + progress * 0.18)
+	var back := PackedVector2Array()
+	var front := PackedVector2Array()
+	for j in 9:
+		var lateral := (float(j) / 8.0 * 2.0 - 1.0) * half_width
+		var taper := 1.0 - pow(absf(lateral) / half_width, 2.0)
+		back.append(center + side * lateral - direction * (SWORD_WAVE_DEPTH * 0.42 * taper))
+		front.append(center + side * lateral + direction * ((SWORD_WAVE_DEPTH * 0.58 + 13.0) * taper))
+	var fill := back.duplicate()
+	var shades := PackedColorArray()
+	for j in 9:
+		var edge_alpha := (1.0 - pow(absf(float(j) / 8.0 * 2.0 - 1.0), 2.0)) * fade
+		shades.append(Color(color.r, color.g, color.b, edge_alpha * 0.10))
+	for j in range(8, -1, -1):
+		fill.append(front[j])
+		var edge_alpha := (1.0 - pow(absf(float(j) / 8.0 * 2.0 - 1.0), 2.0)) * fade
+		shades.append(Color(color.r, color.g, color.b, edge_alpha * 0.65))
+	draw_polygon(fill, shades)
+	for j in 8:
+		var taper := 1.0 - pow(absf((float(j) + 0.5) / 8.0 * 2.0 - 1.0), 2.0)
+		draw_line(front[j], front[j + 1],
+			Color(color.r * 1.5, color.g * 1.5, color.b * 1.5, fade * taper * 0.9),
+			maxf(0.5, 5.0 * fade * taper), true)
+		draw_line(back[j], back[j + 1], Color(color.r, color.g, color.b, fade * taper * 0.12),
+			maxf(0.5, 1.2 * fade * taper), true)
 
 
 func _lightning(event: Dictionary) -> void:

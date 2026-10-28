@@ -78,6 +78,19 @@ func open_reward(player_node: Player, source: String) -> bool:
 	return true
 
 
+func open_primary_choice(player_node: Player, source: String) -> bool:
+	_player = player_node
+	_choices = _player.weapon.owned_forms.duplicate()
+	if _choices.is_empty():
+		return false
+	_stage = &"primary"
+	_title.text = "选择主形态"
+	_hint.text = "%s · 主形态决定攻击动作与倍率" % source
+	_rebuild_cards()
+	visible = true
+	return true
+
+
 func _rebuild_cards() -> void:
 	for child in _cards.get_children():
 		child.queue_free()

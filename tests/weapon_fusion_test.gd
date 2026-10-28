@@ -77,8 +77,10 @@ func _ready() -> void:
 	base_health = enemy.health
 	combat.fire_weapon(player.global_position, Vector2.RIGHT, player.weapon.stats,
 		player.color_index, false, player.weapon)
-	combat._physics_process(1.0 / 60.0)
+	for frame in 20:
+		combat._physics_process(1.0 / 60.0)
 	failures += _check(enemy.health < base_health, "sword deals area damage")
+	combat._sword_waves.clear()
 	player.weapon.acquire_form(&"star")
 	player.weapon.select_primary(&"star")
 	combat.fire_weapon(player.global_position, Vector2.RIGHT, player.weapon.stats,
@@ -137,13 +139,39 @@ func _ready() -> void:
 				enemy.health = enemy.max_health
 				combat.fire_weapon(player.global_position, Vector2.RIGHT, player.weapon.stats,
 					player.color_index, false, player.weapon)
-				combat._physics_process(1.0 / 60.0)
+				for frame in 20:
+					combat._physics_process(1.0 / 60.0)
 				failures += _check(enemy.health < enemy.max_health or not main.projectile_manager._active.is_empty(),
 					"fusion %s + %s primary %s attacks" % [ids[a], ids[b], primary])
+				if primary == &"sword" and player.weapon.has_form(&"boomerang"):
+					failures += _check(main.projectile_manager._active.is_empty() and not combat._sword_waves.is_empty(),
+						"sword boomerang returns the slash without an extra projectile")
+				if primary == &"star" and player.weapon.has_form(&"boomerang"):
+					failures += _check(main.projectile_manager._active.size() == 1,
+						"star boomerang uses the star itself as the returning shot")
 				for projectile in main.projectile_manager._active.duplicate():
 					main.projectile_manager.release(projectile)
 				combat._events.clear()
 				combat._head = 0
+				combat._sword_waves.clear()
+	player.weapon.owned_forms.clear()
+	player.weapon.traits.clear()
+	player.weapon.primary_form = &""
+	player.weapon.acquire_form(&"sword")
+	player.weapon.acquire_form(&"boomerang")
+	player.weapon.select_primary(&"sword")
+	enemy.global_position = player.global_position + Vector2(80, 0)
+	enemy.health = enemy.max_health
+	combat.fire_weapon(player.global_position, Vector2.RIGHT, player.weapon.stats,
+		player.color_index, false, player.weapon)
+	for frame in 17:
+		combat._physics_process(1.0 / 60.0)
+	var after_sword_outbound := enemy.health
+	for frame in 18:
+		combat._physics_process(1.0 / 60.0)
+	failures += _check(enemy.health < after_sword_outbound,
+		"sword boomerang return damages the same enemy once more")
+	combat._sword_waves.clear()
 	if main.debug_console != null:
 		var console: DebugConsole = main.debug_console
 		var tilde := InputEventKey.new()
@@ -163,6 +191,15 @@ func _ready() -> void:
 		console._submit("e triangle 5")
 		failures += _check(get_tree().get_nodes_in_group(&"enemies").size() == before_enemies + 5,
 			"console spawns requested enemy count")
+		console._unhandled_key_input(tilde)
+		console._submit("w star")
+		failures += _check(main.weapon_choice_panel.visible and get_tree().paused and
+			player.weapon.has_form(&"star") and player.weapon.primary_form == &"sword",
+			"console weapon opens primary choice without auto switching")
+		var star_index: int = main.weapon_choice_panel._choices.find(&"star")
+		main.weapon_choice_panel._choose(star_index)
+		failures += _check(player.weapon.primary_form == &"star" and not get_tree().paused,
+			"console primary choice applies selected form")
 	print("WEAPON FUSION TEST %s" % ("PASS" if failures == 0 else "FAIL %d" % failures))
 	get_tree().quit(0 if failures == 0 else 1)
 

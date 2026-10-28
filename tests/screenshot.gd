@@ -26,6 +26,7 @@ extends Node
 ##   clone     主角与简化分身的造型对比
 ##   weapon    武器三选一面板
 ##   console   桌面调试控制台
+##   sword     宽剑气推进的中间帧
 
 
 func _ready() -> void:
@@ -45,7 +46,7 @@ func _ready() -> void:
 		"selector", "levelup", "panic", "fx", "supercrit", "switch",
 		"styles", "hearts", "pickups", "merchant", "merchant_arrow", "shop",
 		"shop_full", "pause", "pause_build", "pause_relics", "pause_damage", "pause_settings",
-		"pause_quit", "shotgun", "clone", "weapon", "console", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
+		"pause_quit", "shotgun", "clone", "weapon", "console", "sword", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
 	]:
 		if args.has(candidate):
 			mode = candidate
@@ -133,6 +134,18 @@ func _ready() -> void:
 		toggle.physical_keycode = KEY_QUOTELEFT
 		main.debug_console._unhandled_key_input(toggle)
 		main.debug_console._submit("help")
+		await get_tree().create_timer(0.12).timeout
+	elif mode == "sword":
+		Director.stop()
+		main.player.controls_enabled = false
+		main.player.set("_invuln", 999.0)
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			enemy.queue_free()
+		await get_tree().process_frame
+		main.player.weapon.acquire_form(&"sword")
+		main.player.weapon.select_primary(&"sword")
+		main.projectile_manager.combat.fire_weapon(main.player.global_position,
+			Vector2.RIGHT, main.player.weapon.stats, main.player.color_index, false, main.player.weapon)
 		await get_tree().create_timer(0.12).timeout
 	elif mode == "clone":
 		Director.stop()
@@ -239,6 +252,8 @@ func _ready() -> void:
 		path = "res://tests/screenshot_weapon.png"
 	elif mode == "console":
 		path = "res://tests/screenshot_console.png"
+	elif mode == "sword":
+		path = "res://tests/screenshot_sword.png"
 	elif mode == "clone":
 		path = "res://tests/screenshot_clone.png"
 	elif mode == "boss":

@@ -168,7 +168,8 @@ func _submit(raw: String) -> void:
 		"fps": _log("FPS %d · 敌人 %d · 弹体 %d" % [Engine.get_frames_per_second(),
 			get_tree().get_nodes_in_group(&"enemies").size(), main.projectile_manager._active.size()])
 		_: _log("未知命令。输入 help。")
-	_input.grab_focus()
+	if visible:
+		_input.grab_focus()
 
 
 func _weapon(args: PackedStringArray) -> void:
@@ -177,8 +178,9 @@ func _weapon(args: PackedStringArray) -> void:
 		return
 	var id := StringName(args[1])
 	if main.player.weapon.acquire_form(id):
-		main.player.weapon.select_primary(id)
-		_log("已获得并设为主形态：%s" % args[1])
+		_log("已获得：%s；请选择主形态" % args[1])
+		_close()
+		main.open_debug_weapon_choice()
 	else:
 		_log("武器已拥有或资源缺失")
 
