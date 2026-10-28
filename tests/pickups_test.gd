@@ -5,7 +5,7 @@ extends Node
 ##
 ## 覆盖：击杀不再直接结算、地面掉落需要靠近/磁吸拾取、重叠合并、
 ## 全屏吸取在生成时直接进入收集状态（有流光）、以及流光池溢出时奖励不丢失。
-## 未拾取掉落达到上限后会丢弃旧物，不会直接结算经验。
+## 未拾取掉落达到上限后只清理屏外旧物；屏内旧物保留，不会直接结算经验。
 
 var failures := 0
 var main: Node
@@ -324,6 +324,17 @@ func _test_unpicked_cap() -> void:
 	field._spawn(PickupField.KIND_XP, player.global_position + Vector2(-700.0, 0.0), 1.0, false)
 	failures += _check(field.total_count() <= PickupField.MAX_ITEMS and is_zero_approx(RunState.xp),
 		"total item cap never credits an uncollected drop")
+	Pickups.clear()
+	# 屏内 90 个旧经验不能被新掉落挤掉；异类新金币无法合并，直接跳过。
+	for i in PickupField.MAX_IDLE:
+		var position := player.global_position + Vector2(-450.0 + float(i % 10) * 100.0,
+			-240.0 + float(i / 10) * 55.0)
+		field._append_item(PickupField.KIND_XP, position, 1.0, 0.0)
+	var protected_position: Vector2 = field.get("_item_pos")[0]
+	field._spawn(PickupField.KIND_GOLD, player.global_position + Vector2(550.0, 100.0), 1.0, false)
+	failures += _check(field.idle_count() == PickupField.MAX_IDLE
+		and field.get("_item_pos")[0] == protected_position,
+		"visible idle drops survive a full field")
 	Pickups.clear()
 
 

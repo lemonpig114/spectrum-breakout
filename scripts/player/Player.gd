@@ -11,6 +11,7 @@ const MAX_HEALTH := 5.0
 const DRAG_HOLD_MS := 140
 const DRAG_DISTANCE := 18.0
 const MANUAL_AIM_WINDOW := 0.5
+const AUTO_AIM_RANGE := 620.0
 const PANIC_KILL_RADIUS := 84.0
 const PANIC_PUSH_RADIUS := 280.0
 ## 三弹以上展开固定扇面再叠随机偏差；双弹改为平行双枪口。
@@ -388,12 +389,19 @@ func _emit_switch_preview() -> void:
 
 func _find_nearest_enemy() -> Node2D:
 	var best: Node2D = null
-	var best_distance := 1.0e20
+	var best_distance := AUTO_AIM_RANGE * AUTO_AIM_RANGE
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return null
+	var half_view := get_viewport_rect().size * 0.5 / camera.zoom
+	var visible_rect := Rect2(camera.get_screen_center_position() - half_view, half_view * 2.0)
 
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
 		if enemy is Enemy and enemy.is_dead:
+			continue
+		if not visible_rect.has_point(enemy.global_position):
 			continue
 		var distance := global_position.distance_squared_to(enemy.global_position)
 		if distance < best_distance:

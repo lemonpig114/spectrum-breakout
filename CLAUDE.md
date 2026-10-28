@@ -15,6 +15,8 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
   `GameInput`. Phone aiming stays automatic. Test/export notes: `docs/MOBILE.md` and `plan.md` §17.
 - `ContentDB` must enumerate exported resources with `ResourceLoader.list_directory()`. `DirAccess` failed in the
   Android package, leaving characters/enemies/skills/relics empty. Recheck an exported `.pck` after content changes.
+- Auto aim is limited to the camera view and 620 world units. `RunState` emits staggered global DoT ticks.
+  Pickup caps preserve visible old ground drops, merge close same-kind drops first, and evict only offscreen currency.
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
 - 19 skill branches × 4 tiers = **76 nodes**, **51 relics**, shop, luck/chests, manual pause, altars, audio.
 - Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.

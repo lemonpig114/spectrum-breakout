@@ -36,11 +36,11 @@ var _round_spark_lives: Array[float] = []
 # 弱点元素状态
 var _burn_stacks: Array[Dictionary] = []
 var _poison_dps := 0.0
+var _dot_bucket := 0
 var _slow := 0.0
 var circle_slow := false
 var _slow_time := 0.0
 var _ice_time := 0.0
-var _dot_timer := 0.0
 var vulnerability := 0.0
 var _vulnerability_applied := false
 
@@ -70,8 +70,8 @@ func visual_angle_random() -> void:
 
 func _ready() -> void:
 	add_to_group("enemies")
-	# 将同屏敌人的持续伤害错开，避免每半秒同时跳出数百个数字。
-	_dot_timer = randf() * 0.5
+	_dot_bucket = get_instance_id() % 4
+	EventBus.dot_tick.connect(_on_global_dot_tick)
 	_healthbar = EnemyHealthBar.new()
 	add_child(_healthbar)
 	_healthbar.refresh(health, max_health, radius, RunState.color_of(color_index))
@@ -453,16 +453,14 @@ func _tick_statuses(delta: float) -> void:
 		if _ice_time <= 0.0:
 			visuals_changed = true
 
-	_dot_timer += delta
-	while _dot_timer >= 0.5:
-		_dot_timer -= 0.5
-		_apply_dot_tick()
-		if is_dead:
-			return
-
 	# 状态图标独立绘制，只有出现/消失时才刷新血条节点。
 	if visuals_changed:
 		_refresh_status_icons()
+
+
+func _on_global_dot_tick(bucket: int) -> void:
+	if bucket == _dot_bucket and not is_dead and (not _burn_stacks.is_empty() or _poison_dps > 0.0):
+		_apply_dot_tick()
 
 
 ## 灼伤在两秒内每半秒结算一次；中毒每半秒结算半秒的伤害。

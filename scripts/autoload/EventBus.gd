@@ -3,6 +3,7 @@ extends Node
 ## 全局信号总线。系统之间只通过这里通信，避免相互直接引用。
 
 signal color_changed(color_index: int)
+signal dot_tick(bucket: int)
 signal color_switch_preview(
 	active: bool,
 	screen_position: Vector2,

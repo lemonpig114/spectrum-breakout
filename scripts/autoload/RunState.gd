@@ -31,6 +31,8 @@ var _xp_fraction := 0.0
 var _gold_fraction := 0.0
 ## 债券等“收益”遗物的金币累积器，避免每帧 add_gold(0)。
 var _income_accum := 0.0
+var _dot_clock := 0.0
+var _dot_bucket := 0
 
 
 func _ready() -> void:
@@ -63,6 +65,8 @@ func begin_run() -> void:
 	_xp_fraction = 0.0
 	_gold_fraction = 0.0
 	_income_accum = 0.0
+	_dot_clock = 0.0
+	_dot_bucket = 0
 
 	_emit_energy(true)
 	EventBus.color_changed.emit(color_index)
@@ -121,6 +125,11 @@ func _process(delta: float) -> void:
 		return
 
 	elapsed += delta
+	_dot_clock += delta
+	while _dot_clock >= 0.125:
+		_dot_clock -= 0.125
+		_dot_bucket = (_dot_bucket + 1) % 4
+		EventBus.dot_tick.emit(_dot_bucket)
 
 	if energy < max_energy:
 		var regen := ENERGY_REGEN * Skills.energy_regen_multiplier()

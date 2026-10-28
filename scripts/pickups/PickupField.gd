@@ -8,6 +8,7 @@ extends Node2D
 ## - 拾取时借用池化的 Line2D 画“流光”拖尾，不每掉落新建节点或 Tween。
 ## - 全屏吸取（xp_4 / gold_3）在生成时直接进入收集状态，不产生地面掉落物。
 ## - 地面掉落有上限；同类型近位置掉落会合并数量，10 秒后扩大就近合并范围。
+## - 上限只会驱逐屏外旧货币，屏内旧物不会被静默删除。
 
 const KIND_XP := 0
 const KIND_GOLD := 1
@@ -267,12 +268,11 @@ func _spawn(kind: int, world_position: Vector2, amount: float, auto_collect: boo
 				queue_redraw()
 				return
 
-	# 普通地面掉落必须真正被拾取才结算；超出总量时先丢弃旧货币。
-	if kind != KIND_CHEST and _item_pos.size() >= MAX_ITEMS:
-		if not _discard_oldest_idle():
+	# 满额时先把新货币并入近处同类；只允许清理视野外旧货币。
+	# 若视野内找不到可合并的目标，就跳过新物，不动已经在屏幕上的掉落。
+	if kind != KIND_CHEST and (_item_pos.size() >= MAX_ITEMS or idle_count() >= MAX_IDLE):
+		if _merge_new_nearby(kind, world_position, amount):
 			return
-
-	if kind != KIND_CHEST and idle_count() >= MAX_IDLE:
 		if not _discard_oldest_idle():
 			return
 
@@ -305,7 +305,7 @@ func _merge_aged_neighbours() -> void:
 		var nearest := -1
 		var best_distance := AGED_MERGE_RADIUS * AGED_MERGE_RADIUS
 		for j in _item_pos.size():
-			if j == i or _state[j] != STATE_IDLE or _kind[j] != _kind[i] or _age[j] < AGED_MERGE_DELAY:
+			if j == i or _state[j] != STATE_IDLE or _kind[j] != _kind[i]:
 				continue
 			var distance := _item_pos[i].distance_squared_to(_item_pos[j])
 			if distance < best_distance:
@@ -320,12 +320,41 @@ func _merge_aged_neighbours() -> void:
 		_remove_item(i)
 
 
-## 场地满时移除最老的未拾取货币；丢失奖励不结算，宝箱始终保留。
+func _merge_new_nearby(kind: int, position: Vector2, amount: float) -> bool:
+	var nearest := -1
+	var best_distance := AGED_MERGE_RADIUS * AGED_MERGE_RADIUS
+	for i in _item_pos.size():
+		if _state[i] != STATE_IDLE or _kind[i] != kind:
+			continue
+		var distance := _item_pos[i].distance_squared_to(position)
+		if distance < best_distance:
+			best_distance = distance
+			nearest = i
+	if nearest < 0:
+		return false
+	_amount[nearest] += amount
+	_merged_count[nearest] += 1
+	queue_redraw()
+	return true
+
+
+func _visible_world_rect() -> Rect2:
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return Rect2(RunState.arena_rect.position, RunState.arena_rect.size)
+	var half_view := get_viewport_rect().size * 0.5 / camera.zoom
+	return Rect2(camera.get_screen_center_position() - half_view, half_view * 2.0)
+
+
+## 场地满时只移除视野外最老的未拾取货币；丢失奖励不结算，宝箱始终保留。
 func _discard_oldest_idle() -> bool:
 	var oldest := -1
 	var oldest_age := -1.0
+	var visible_rect := _visible_world_rect()
 	for i in _state.size():
 		if _state[i] != STATE_IDLE or _kind[i] == KIND_CHEST:
+			continue
+		if visible_rect.has_point(_item_pos[i]):
 			continue
 		if _age[i] > oldest_age:
 			oldest_age = _age[i]
