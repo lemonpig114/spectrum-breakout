@@ -33,6 +33,34 @@ func _ready() -> void:
 	failures += _check(is_equal_approx(near.health, before), "other DoT bucket leaves enemy untouched")
 	EventBus.dot_tick.emit(near._dot_bucket)
 	failures += _check(near.health < before, "global DoT bucket applies damage")
+	var batch := get_tree().get_first_node_in_group(&"enemy_batch_renderer") as EnemyBatchRenderer
+	failures += _check(batch != null and near.batch_rendered, "ordinary enemy uses shared MultiMesh")
+	var manager: ProjectileManager = main.projectile_manager
+	var first := manager._create_pooled()
+	var second := manager._create_pooled()
+	var third := manager._create_pooled()
+	for projectile in [first, second, third]:
+		projectile.manager = manager
+		projectile.active_index = manager._active.size()
+		manager._active.append(projectile)
+	manager.release(second)
+	failures += _check(manager._active.size() == 2 and third.active_index == 1
+		and manager._active[1] == third, "projectile pool swap-removes middle item")
+	manager.release(third)
+	manager.release(first)
+	failures += _check(manager._active.is_empty() and first.active_index == -1
+		and third.active_index == -1, "projectile pool indices clear on release")
+	manager.fire(player.global_position, Vector2.RIGHT, player.weapon.stats,
+		player.color_index, player.weapon.core)
+	var normal: Projectile = manager._active.back()
+	failures += _check(manager.batch_renderer != null and normal.batch_rendered,
+		"ordinary projectile uses shared MultiMesh")
+	manager.release(normal)
+	manager.fire(player.global_position, Vector2.RIGHT, player.weapon.stats,
+		player.color_index, player.weapon.core, true)
+	var heavy: Projectile = manager._active.back()
+	failures += _check(not heavy.batch_rendered, "heavy projectile keeps custom drawing")
+	manager.release(heavy)
 	print("OPTIMIZATION TEST %s" % ("PASS" if failures == 0 else "FAIL %d" % failures))
 	get_tree().quit(0 if failures == 0 else 1)
 

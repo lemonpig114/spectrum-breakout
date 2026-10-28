@@ -19,6 +19,8 @@ var _age := 0.0
 var _released := false
 var _owns_shape := false
 var _hit_ids: Dictionary = {}
+var active_index := -1
+var batch_rendered := false
 
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 
@@ -62,6 +64,7 @@ func setup(
 	damage_bonus_ratios = Skills.projectile_bonus_ratios(stats, color_value, heavy)
 	projectile_size = stats.get_value(&"projectile_size") * size_scale
 	is_heavy = heavy
+	batch_rendered = not heavy and owner_manager.batch_enabled
 	if is_heavy:
 		damage = (raw_damage + 40.0) * damage_mult * damage_final * 2.5 * damage_scale
 		projectile_size *= 1.5
@@ -188,6 +191,8 @@ func _apply_shape() -> void:
 
 
 func _draw() -> void:
+	if batch_rendered:
+		return
 	var c := RunState.color_of(color_index)
 	var s := projectile_size
 	# 尾焰使用顶点透明度渐变，不增加节点；尾端完全透明。

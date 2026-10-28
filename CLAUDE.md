@@ -17,6 +17,11 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
   Android package, leaving characters/enemies/skills/relics empty. Recheck an exported `.pck` after content changes.
 - Auto aim is limited to the camera view and 620 world units. `RunState` emits staggered global DoT ticks.
   Pickup caps preserve visible old ground drops, merge close same-kind drops first, and evict only offscreen currency.
+- Ordinary triangle/square/hexagon enemies are drawn through `EnemyBatchRenderer` MultiMeshes; ordinary bullets through
+  `ProjectileBatchRenderer`. Enemy AI, health bars, statuses and projectile Area2D collision remain per node. Boss,
+  planes, exploding rounds, empowered squares and heavy bullets retain custom draws. Projectile active-list release
+  uses swap removal with `active_index`. Benchmark with `tests/_perf_probe.tscn -- --projectiles=300`; use
+  `--no-enemy-batch` / `--no-projectile-batch` for visual or performance comparisons.
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
 - 19 skill branches × 4 tiers = **76 nodes**, **51 relics**, shop, luck/chests, manual pause, altars, audio.
 - Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.

@@ -27,6 +27,7 @@ var _pickup_count := 0
 var _pickup_redraw_60 := false
 var _pickup_full_detail := false
 var _target_enemies := TARGET_ENEMIES
+var _target_projectiles := 0
 var _spawn_timer := 0.0
 var _remaining := DURATION
 var _warmup := WARMUP
@@ -78,6 +79,8 @@ func _ready() -> void:
 			_pickup_count = maxi(0, int(arg.get_slice("=", 1)))
 		elif arg.begins_with("--enemies="):
 			_target_enemies = maxi(1, int(arg.get_slice("=", 1)))
+		elif arg.begins_with("--projectiles="):
+			_target_projectiles = maxi(0, int(arg.get_slice("=", 1)))
 		elif arg.begins_with("--seconds="):
 			_remaining = maxf(3.0, float(arg.get_slice("=", 1)))
 
@@ -102,6 +105,7 @@ func _ready() -> void:
 			Skills.unlock(node.id, true)
 
 	_fill_enemies(_target_enemies)
+	_fill_projectiles(_target_projectiles)
 	var pickup_field := _main.get_node_or_null("World/PickupField") as PickupField
 	if pickup_field != null:
 		if _pickup_redraw_60:
@@ -151,6 +155,7 @@ func _process(delta: float) -> void:
 		_min_enemies = mini(_min_enemies, alive)
 		if alive < _target_enemies:
 			_fill_enemies(mini(8, _target_enemies - alive))
+		_fill_projectiles(mini(100, _target_projectiles - _main.projectile_manager._active.size()))
 
 	if _remaining <= 0.0:
 		_finish()
@@ -251,3 +256,15 @@ func _fill_enemies(count: int) -> void:
 		enemy.global_position = _main.player.global_position + Vector2(
 			cos(angle), sin(angle)
 		) * distance
+
+
+func _fill_projectiles(count: int) -> void:
+	if count <= 0:
+		return
+	var player: Player = _main.player
+	for i in count:
+		var angle := _rng.randf() * TAU
+		var origin := player.global_position + Vector2.from_angle(angle) * _rng.randf_range(40.0, 350.0)
+		_main.projectile_manager.fire(origin, Vector2.from_angle(angle + PI * 0.5),
+			player.weapon.stats, i % 3, player.weapon.core, false,
+			1.0, 1.0, 1.0, 3.0)

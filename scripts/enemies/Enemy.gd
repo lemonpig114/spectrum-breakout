@@ -11,6 +11,7 @@ var health := 10.0
 var radius := 12.0
 var is_dead := false
 var empowered := false
+var batch_rendered := false
 var _speed_multiplier := 1.0
 
 var _visual_angle := 0.0
@@ -70,6 +71,11 @@ func visual_angle_random() -> void:
 
 func _ready() -> void:
 	add_to_group("enemies")
+	batch_rendered = type_data != null and type_data.shape == &"polygon" \
+		and type_data.sides in [3, 4, 6] \
+		and type_data.behavior != &"explode" and not type_data.is_boss \
+		and get_tree().get_first_node_in_group(&"enemy_batch_renderer") != null \
+		and not OS.get_cmdline_user_args().has("--no-enemy-batch")
 	_dot_bucket = get_instance_id() % 4
 	EventBus.dot_tick.connect(_on_global_dot_tick)
 	_healthbar = EnemyHealthBar.new()
@@ -545,6 +551,7 @@ func empower(boss_color: int) -> void:
 		return
 	if not empowered:
 		empowered = true
+		batch_rendered = false
 		max_health *= 3.0
 		_speed_multiplier = 1.2
 	color_index = boss_color
@@ -619,7 +626,7 @@ func _die() -> void:
 
 
 func _draw() -> void:
-	if type_data == null:
+	if type_data == null or batch_rendered:
 		return
 
 	var c := RunState.color_of(color_index)

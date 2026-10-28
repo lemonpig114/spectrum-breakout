@@ -1,6 +1,7 @@
 extends Node2D
 
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
+const ENEMY_BATCH_RENDERER := preload("res://scripts/enemies/EnemyBatchRenderer.gd")
 const PERFORMANCE_RECORDER := preload("res://scripts/game/PerformanceRecorder.gd")
 const SUMMON_FIELD := preload("res://scripts/skills/SummonField.gd")
 const MENU_SCENE := "res://scenes/character_select.tscn"
@@ -59,6 +60,7 @@ func _ready() -> void:
 		add_child(recorder)
 		recorder.setup(self)
 	_spawn_player()
+	world.add_child(ENEMY_BATCH_RENDERER.new())
 	var modal_panels: Array[Control] = [
 		level_up_panel, shop_panel, altar_panel, pause_panel, game_over_panel
 	]
