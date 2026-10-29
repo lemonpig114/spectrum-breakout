@@ -154,6 +154,10 @@ func color_of(color_value: int) -> Color:
 	return color_rules.hdr_color_for(color_value)
 
 
+func enemy_color_of(color_value: int) -> Color:
+	return color_rules.enemy_color_for(color_value)
+
+
 ## 当前选择的机体。直接运行 main.tscn（测试、截图）时回退到棱镜/第一个角色。
 func get_selected_character() -> CharacterResource:
 	selected_character_id = &"prism"

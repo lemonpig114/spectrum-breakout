@@ -44,7 +44,7 @@ func _process(_delta: float) -> void:
 			transform.x *= enemy.radius
 			transform.y *= enemy.radius
 			multi.set_instance_transform_2d(i, transform)
-			var color := RunState.color_of(enemy.color_index)
+			var color := RunState.enemy_color_of(enemy.color_index)
 			multi.set_instance_color(i, Color(color.r * enemy.modulate.r,
 				color.g * enemy.modulate.g, color.b * enemy.modulate.b, enemy.modulate.a))
 

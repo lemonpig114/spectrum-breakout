@@ -80,7 +80,7 @@ func _ready() -> void:
 	EventBus.dot_tick.connect(_on_global_dot_tick)
 	_healthbar = EnemyHealthBar.new()
 	add_child(_healthbar)
-	_healthbar.refresh(health, max_health, radius, RunState.color_of(color_index))
+	_healthbar.refresh(health, max_health, radius, RunState.enemy_color_of(color_index))
 	rotation = _visual_angle
 	_healthbar.rotation = -_visual_angle
 	if type_data != null and type_data.behavior == &"ranged":
@@ -542,7 +542,7 @@ func _squash() -> void:
 
 func _refresh_healthbar() -> void:
 	if _healthbar != null:
-		_healthbar.refresh(health, max_health, radius, RunState.color_of(color_index))
+		_healthbar.refresh(health, max_health, radius, RunState.enemy_color_of(color_index))
 
 
 ## Boss 强化只首次加上限和移速；再次命中仅补满血并重新染色。
@@ -629,7 +629,7 @@ func _draw() -> void:
 	if type_data == null or batch_rendered:
 		return
 
-	var c := RunState.color_of(color_index)
+	var c := RunState.enemy_color_of(color_index)
 	var fill := Color(c.r * 0.12, c.g * 0.12, c.b * 0.12, 1.0)
 
 	# 多边形随节点 rotation 旋转，这里只画一次、不重建绘制命令。

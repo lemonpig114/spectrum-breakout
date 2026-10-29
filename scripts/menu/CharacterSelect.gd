@@ -171,10 +171,11 @@ func _draw_card(rect: Rect2, character: CharacterResource, index: int) -> void:
 		)
 
 	# 机体预览：缓慢旋转瞄准方向，外形与局内一致。
+	var preview_boost := 1.9 if character.id == &"prism" else 1.7
 	var preview_color := Color(
-		minf(2.2, accent.r * 1.7),
-		minf(2.2, accent.g * 1.7),
-		minf(2.2, accent.b * 1.7),
+		minf(2.2, accent.r * preview_boost),
+		minf(2.2, accent.g * preview_boost),
+		minf(2.2, accent.b * preview_boost),
 		1.0
 	)
 	CharacterVisual.draw_unit(

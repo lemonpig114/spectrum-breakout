@@ -274,7 +274,7 @@ func _die() -> void:
 
 
 func _draw() -> void:
-	var tint := RunState.color_of(color_index)
+	var tint := RunState.enemy_color_of(color_index)
 	var charge := _charge_amount()
 	var pulse := 0.5 + 0.5 * sin(_plate_angle * 9.0)
 	var core := Color(tint.r * 0.12, tint.g * 0.12, tint.b * 0.12, 1.0)

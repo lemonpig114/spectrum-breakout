@@ -25,7 +25,7 @@ const BASE_WEAPON_ID := &"basic_bolt"
 @export var order: int = 0
 
 ## 仅用于菜单/卡片的高亮色，不参与战斗颜色判定。
-@export var accent: Color = Color(0.2, 0.45, 1.0, 1.0)
+@export var accent: Color = Color(0.24, 0.48, 1.0, 1.0)
 
 @export var body_radius: float = 12.0
 ## 生命单位是“颗心”，HUD 按整颗/半颗绘制。
