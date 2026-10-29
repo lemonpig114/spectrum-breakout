@@ -9,6 +9,8 @@ extends Node
 ##   fx        同屏展示普通命中火花、弱点/暴击伤害数字与敌人死亡消散
 ##   supercrit 强制超暴击，检查 35px 琉璃彩数字
 ##   switch    展示右键轮盘展开与玩家换色光环的中间帧
+##   blue      展示蓝色角色和切色选择器，检查是否仍是蓝色
+##   soul_palette  对比灵魂紫色在不同渲染器中的颜色
 ##   styles    同屏对比六种爆炸几何语言（星芒/重型/溅射/灵魂/反击/死亡碎裂）
 ##   hearts    把生命压到 57%，检查以撒式心形容器和残血填充
 ##   pickups   地面金币/经验与全屏吸取流光同屏展示
@@ -40,10 +42,12 @@ func _ready() -> void:
 	var main_scene := load("res://scenes/main.tscn") as PackedScene
 	var main := main_scene.instantiate()
 	add_child(main)
+	if args.has("--no-glow"):
+		(main.get_node("WorldEnvironment") as WorldEnvironment).environment.glow_enabled = false
 
 	var mode := ""
 	for candidate in [
-		"selector", "levelup", "panic", "fx", "supercrit", "switch",
+		"selector", "levelup", "panic", "fx", "supercrit", "switch", "blue", "soul_palette",
 		"styles", "hearts", "pickups", "merchant", "merchant_arrow", "shop",
 		"shop_full", "pause", "pause_build", "pause_relics", "pause_damage", "pause_settings",
 		"pause_quit", "shotgun", "clone", "weapon", "console", "sword", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
@@ -82,6 +86,29 @@ func _ready() -> void:
 	elif mode == "switch":
 		await _setup_switch_demo(main)
 		await get_tree().create_timer(0.18).timeout
+	elif mode == "blue":
+		Director.stop()
+		main.player.controls_enabled = false
+		main.player.set("_invuln", 0.0)
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			enemy.queue_free()
+		while RunState.color_index != ColorType.BLUE:
+			RunState.cycle_color(1)
+		await get_tree().create_timer(0.35).timeout
+	elif mode == "soul_palette":
+		Director.stop()
+		main.player.controls_enabled = false
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			enemy.queue_free()
+		await get_tree().process_frame
+		await get_tree().create_timer(0.8).timeout
+		var center: Vector2 = main.player.global_position
+		var colors := [Color(1.2, 0.25, 2.6), Color(1.3, 0.4, 2.6),
+			Color(1.4, 0.5, 2.6), Color(1.2, 0.35, 3.0)]
+		for i in colors.size():
+			FX.shockwave(center + Vector2(-300.0 + i * 200.0, 90.0), colors[i],
+				92.0, 0.45, EnergyBurst.STYLE_SOUL)
+		await get_tree().create_timer(0.12).timeout
 	elif mode == "styles":
 		await _setup_style_demo(main)
 		await get_tree().create_timer(0.12).timeout
@@ -220,6 +247,10 @@ func _ready() -> void:
 		path = "res://tests/screenshot_supercrit.png"
 	elif mode == "switch":
 		path = "res://tests/screenshot_switch.png"
+	elif mode == "blue":
+		path = "res://tests/screenshot_blue.png"
+	elif mode == "soul_palette":
+		path = "res://tests/screenshot_soul_palette.png"
 	elif mode == "styles":
 		path = "res://tests/screenshot_styles.png"
 	elif mode == "hearts":
@@ -417,7 +448,7 @@ func _setup_style_demo(main: Node) -> void:
 	FX.hit_burst(center + Vector2(-250.0, -120.0), Color(0.5, 1.6, 2.2, 1.0), 38.0, 0.4, EnergyBurst.STYLE_STAR)
 	FX.hit_burst(center + Vector2(0.0, -120.0), Color(1.9, 1.3, 0.5, 1.0), 48.0, 0.4, EnergyBurst.STYLE_HEAVY)
 	FX.shockwave(center + Vector2(250.0, -120.0), Color(2.2, 0.5, 0.6, 1.0), 82.0, 0.4, EnergyBurst.STYLE_SPLASH)
-	FX.shockwave(center + Vector2(-250.0, 110.0), Color(0.68, 0.22, 1.0, 1.0), 92.0, 0.45, EnergyBurst.STYLE_SOUL)
+	FX.shockwave(center + Vector2(-250.0, 110.0), Color(1.4, 1.1, 2.6, 1.0), 92.0, 0.45, EnergyBurst.STYLE_SOUL)
 	FX.shockwave(center + Vector2(0.0, 110.0), Color(2.0, 0.9, 0.4, 1.0), 108.0, 0.55, EnergyBurst.STYLE_PANIC)
 	FX.hit_burst(center + Vector2(250.0, 110.0), Color(0.7, 2.0, 1.1, 1.0), 42.0, 0.4, EnergyBurst.STYLE_SHATTER)
 

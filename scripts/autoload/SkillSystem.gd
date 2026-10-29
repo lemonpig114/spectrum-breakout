@@ -968,8 +968,7 @@ func _tick_soul(delta: float) -> void:
 func _do_soul_pulse() -> void:
 	var radius := soul_radius()
 	var amount := soul_damage()
-	# 使用饱和的 SDR 紫色，减少不同渲染方式下的高亮泛白。
-	var color := Color(0.68, 0.22, 1.0, 1.0)
+	var color := Color(1.4, 1.1, 2.6, 1.0)
 	Audio.play(&"soul")
 	FX.shockwave(player.global_position, color, radius, 0.32, EnergyBurst.STYLE_SOUL)
 	FX.ripple(player.global_position, 0.35)

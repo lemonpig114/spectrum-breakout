@@ -48,6 +48,12 @@ var debug_console: DebugConsole
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
+	if OS.is_debug_build():
+		print("RENDER method=%s driver=%s hdr_2d=%s" % [
+			RenderingServer.get_current_rendering_method(),
+			RenderingServer.get_current_rendering_driver_name(),
+			ProjectSettings.get_setting("rendering/viewport/hdr_2d")
+		])
 
 	var font := load(FONT_PATH)
 	if font != null:

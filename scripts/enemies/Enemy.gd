@@ -367,7 +367,7 @@ func take_true_damage(amount: float, source_key: StringName = &"skill:soul_1") -
 	FX.damage_number(
 		global_position + Vector2(0.0, -radius - 8.0),
 		amount,
-		Color(0.82, 0.45, 1.0, 1.0),
+		Color(2.4, 2.0, 3.0, 1.0),
 		false,
 		FloatingTextLayer.STYLE_SOUL
 	)
