@@ -271,37 +271,64 @@ func _sword_first_hit_effects(wave: Dictionary, enemy: Enemy) -> void:
 
 func _draw_sword_wave(wave: Dictionary) -> void:
 	var progress := clampf(float(wave.age) / SWORD_WAVE_DURATION, 0.0, 1.0)
-	var fade := (1.0 - progress) * (0.72 if bool(wave.returning) else 1.0)
+	var fade := pow(1.0 - progress, 1.25) * (0.72 if bool(wave.returning) else 1.0)
 	var distance := lerpf(22.0, SWORD_WAVE_DISTANCE, 1.0 - progress if bool(wave.returning) else progress)
 	var direction: Vector2 = wave.direction
 	var center: Vector2 = to_local(wave.origin + direction * distance)
 	var side := direction.orthogonal()
 	var color := RunState.color_of(int(wave.color))
-	var half_width := SWORD_WAVE_WIDTH * 0.5 * (0.82 + progress * 0.18)
-	var back := PackedVector2Array()
-	var front := PackedVector2Array()
-	for j in 9:
-		var lateral := (float(j) / 8.0 * 2.0 - 1.0) * half_width
-		var taper := 1.0 - pow(absf(lateral) / half_width, 2.0)
-		back.append(center + side * lateral - direction * (SWORD_WAVE_DEPTH * 0.42 * taper))
-		front.append(center + side * lateral + direction * ((SWORD_WAVE_DEPTH * 0.58 + 13.0) * taper))
-	var fill := back.duplicate()
+	var body := PackedVector2Array()
 	var shades := PackedColorArray()
-	for j in 9:
-		var edge_alpha := (1.0 - pow(absf(float(j) / 8.0 * 2.0 - 1.0), 2.0)) * fade
-		shades.append(Color(color.r, color.g, color.b, edge_alpha * 0.10))
-	for j in range(8, -1, -1):
-		fill.append(front[j])
-		var edge_alpha := (1.0 - pow(absf(float(j) / 8.0 * 2.0 - 1.0), 2.0)) * fade
-		shades.append(Color(color.r, color.g, color.b, edge_alpha * 0.65))
-	draw_polygon(fill, shades)
-	for j in 8:
-		var taper := 1.0 - pow(absf((float(j) + 0.5) / 8.0 * 2.0 - 1.0), 2.0)
-		draw_line(front[j], front[j + 1],
-			Color(color.r * 1.5, color.g * 1.5, color.b * 1.5, fade * taper * 0.9),
-			maxf(0.5, 5.0 * fade * taper), true)
-		draw_line(back[j], back[j + 1], Color(color.r, color.g, color.b, fade * taper * 0.12),
-			maxf(0.5, 1.2 * fade * taper), true)
+	for half in [-1.0, 1.0]:
+		for i in 19:
+			var t := float(i) / 18.0 if half < 0.0 else float(18 - i) / 18.0
+			var point := _sword_curve(t)
+			body.append(center + direction * point.x + side * point.y * half)
+			shades.append(Color(color.r, color.g, color.b, fade * 0.16 * sin(PI * t)))
+	draw_polygon(body, shades)
+	draw_line(center - direction * 26.0, center + direction * 58.0,
+		Color(color.r, color.g, color.b, fade * 0.18), 2.0, true)
+	# 镜像的两条刀锋共用中心线；不同宽度的色带形成柔光与细高光。
+	for half in [-1.0, 1.0]:
+		_draw_sword_ribbon(center, direction, side * half, color, fade, Vector2.ZERO, 13.0, 0.28)
+		_draw_sword_ribbon(center, direction, side * half, color.lerp(Color.WHITE, 0.5), fade,
+			Vector2(0.0, 1.5), 3.0, 0.88)
+
+
+func _draw_sword_ribbon(center: Vector2, forward: Vector2, side: Vector2,
+		color: Color, fade: float, shift: Vector2, thickness: float, opacity: float) -> void:
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	var left_colors := PackedColorArray()
+	var right_colors := PackedColorArray()
+	for i in 19:
+		var t := float(i) / 18.0
+		var point := _sword_curve(t)
+		var tangent := (_sword_curve(minf(1.0, t + 0.01)) - _sword_curve(maxf(0.0, t - 0.01))).normalized()
+		var normal := tangent.orthogonal()
+		var taper := pow(sin(PI * t), 0.65)
+		var width := thickness * taper * (0.55 + 0.45 * t)
+		var base := center + forward * (point.x + shift.x) + side * (point.y + shift.y)
+		var normal_world := forward * normal.x + side * normal.y
+		left.append(base - normal_world * width)
+		right.append(base + normal_world * width)
+		var alpha := opacity * fade * taper
+		left_colors.append(Color(color.r, color.g, color.b, alpha * 0.25))
+		right_colors.append(Color(color.r, color.g, color.b, alpha))
+	var points := left.duplicate()
+	var colors := left_colors
+	for i in range(18, -1, -1):
+		points.append(right[i])
+		colors.append(right_colors[i])
+	draw_polygon(points, colors)
+
+
+func _sword_curve(t: float) -> Vector2:
+	var u := 1.0 - t
+	return Vector2(-42.0, 0.0) * (u * u * u) \
+		+ Vector2(-5.0, -41.0) * (3.0 * u * u * t) \
+		+ Vector2(58.0, -56.0) * (3.0 * u * t * t) \
+		+ Vector2(74.0, 0.0) * (t * t * t)
 
 
 func _lightning(event: Dictionary) -> void:
