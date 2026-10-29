@@ -277,22 +277,13 @@ func _draw_sword_wave(wave: Dictionary) -> void:
 	var center: Vector2 = to_local(wave.origin + direction * distance)
 	var side := direction.orthogonal()
 	var color := RunState.color_of(int(wave.color))
-	var body := PackedVector2Array()
-	var shades := PackedColorArray()
-	for half in [-1.0, 1.0]:
-		for i in 19:
-			var t := float(i) / 18.0 if half < 0.0 else float(18 - i) / 18.0
-			var point := _sword_curve(t)
-			body.append(center + direction * point.x + side * point.y * half)
-			shades.append(Color(color.r, color.g, color.b, fade * 0.16 * sin(PI * t)))
-	draw_polygon(body, shades)
-	draw_line(center - direction * 26.0, center + direction * 58.0,
-		Color(color.r, color.g, color.b, fade * 0.18), 2.0, true)
-	# 镜像的两条刀锋共用中心线；不同宽度的色带形成柔光与细高光。
-	for half in [-1.0, 1.0]:
-		_draw_sword_ribbon(center, direction, side * half, color, fade, Vector2.ZERO, 13.0, 0.28)
-		_draw_sword_ribbon(center, direction, side * half, color.lerp(Color.WHITE, 0.5), fade,
-			Vector2(0.0, 1.5), 3.0, 0.88)
+	# 单条弧形刀气，起止端分列瞄准轴两侧；层叠色带形成长尾和刀锋高光。
+	_draw_sword_ribbon(center, direction, side, color, fade, Vector2.ZERO, 17.0, 0.26)
+	_draw_sword_ribbon(center, direction, side, color, fade, Vector2(-7.0, 0.0), 7.0, 0.35)
+	_draw_sword_ribbon(center, direction, side, color.lerp(Color.WHITE, 0.5), fade,
+		Vector2(2.0, 0.0), 3.0, 0.9)
+	_draw_sword_ribbon(center, direction, side, color.lerp(Color.WHITE, 0.7), fade,
+		Vector2(6.0, 0.0), 1.1, 0.55)
 
 
 func _draw_sword_ribbon(center: Vector2, forward: Vector2, side: Vector2,
@@ -325,10 +316,10 @@ func _draw_sword_ribbon(center: Vector2, forward: Vector2, side: Vector2,
 
 func _sword_curve(t: float) -> Vector2:
 	var u := 1.0 - t
-	return Vector2(-42.0, 0.0) * (u * u * u) \
-		+ Vector2(-5.0, -41.0) * (3.0 * u * u * t) \
-		+ Vector2(58.0, -56.0) * (3.0 * u * t * t) \
-		+ Vector2(74.0, 0.0) * (t * t * t)
+	return Vector2(-24.0, 53.0) * (u * u * u) \
+		+ Vector2(55.0, 51.0) * (3.0 * u * u * t) \
+		+ Vector2(55.0, -51.0) * (3.0 * u * t * t) \
+		+ Vector2(-24.0, -53.0) * (t * t * t)
 
 
 func _lightning(event: Dictionary) -> void:
