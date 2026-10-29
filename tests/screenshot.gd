@@ -417,7 +417,7 @@ func _setup_style_demo(main: Node) -> void:
 	FX.hit_burst(center + Vector2(-250.0, -120.0), Color(0.5, 1.6, 2.2, 1.0), 38.0, 0.4, EnergyBurst.STYLE_STAR)
 	FX.hit_burst(center + Vector2(0.0, -120.0), Color(1.9, 1.3, 0.5, 1.0), 48.0, 0.4, EnergyBurst.STYLE_HEAVY)
 	FX.shockwave(center + Vector2(250.0, -120.0), Color(2.2, 0.5, 0.6, 1.0), 82.0, 0.4, EnergyBurst.STYLE_SPLASH)
-	FX.shockwave(center + Vector2(-250.0, 110.0), Color(1.4, 1.1, 2.6, 1.0), 92.0, 0.45, EnergyBurst.STYLE_SOUL)
+	FX.shockwave(center + Vector2(-250.0, 110.0), Color(0.68, 0.22, 1.0, 1.0), 92.0, 0.45, EnergyBurst.STYLE_SOUL)
 	FX.shockwave(center + Vector2(0.0, 110.0), Color(2.0, 0.9, 0.4, 1.0), 108.0, 0.55, EnergyBurst.STYLE_PANIC)
 	FX.hit_burst(center + Vector2(250.0, 110.0), Color(0.7, 2.0, 1.1, 1.0), 42.0, 0.4, EnergyBurst.STYLE_SHATTER)
 

@@ -515,13 +515,13 @@ static func build_relics() -> Array[RelicResource]:
 		&"dust_knife", "小刀", "暴击伤害 +15%",
 		&"", RelicResource.RARITY_DUST,
 		[_mod(&"crit_damage", OP_FLAT, 0.15, T_P)],
-		12, false, 0.0, 0.0, false, false, 3
+		12
 	))
 	relics.append(_relic(
 		&"dust_paper_star", "纸星星", "暴击率 +5%",
 		&"", RelicResource.RARITY_DUST,
 		[_mod(&"crit_chance", OP_FLAT, 0.05, T_P)],
-		12
+		12, false, 0.0, 0.0, false, false, 3
 	))
 	relics.append(_relic(
 		&"dust_iron_glove", "铁手套", "基础伤害 +3\n射速 -5%",
@@ -597,14 +597,14 @@ static func build_relics() -> Array[RelicResource]:
 		45, false, 0.0, 0.0, false, true
 	))
 	relics.append(_relic(
-		&"rare_three_leaf", "三叶草", "幸运遗物：幸运 -3\n暴击率 +20%\n暴击伤害 +20%",
+		&"rare_three_leaf", "三叶草", "幸运 -3\n暴击率 +20%\n暴击伤害 +20%",
 		&"", RelicResource.RARITY_RARE,
 		[
 			_mod(&"luck", OP_FLAT, -3.0, T_P),
 			_mod(&"crit_chance", OP_FLAT, 0.20, T_P),
 			_mod(&"crit_damage", OP_FLAT, 0.20, T_P),
 		],
-		50, false, 0.0, 0.0, false, true
+		50, false, 0.0, 0.0, true, false
 	))
 	relics.append(_relic(
 		&"rare_dumbbell", "哑铃", "基础伤害 +6",

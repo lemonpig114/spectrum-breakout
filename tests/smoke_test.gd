@@ -58,6 +58,9 @@ func _ready() -> void:
 	)
 
 	var rules := RunState.color_rules
+	var prism := ContentDB.get_characters()[0] as CharacterResource
+	failures += _check(rules.color_for(ColorType.BLUE).is_equal_approx(prism.accent),
+		"combat blue matches character selection blue")
 	failures += _check(is_equal_approx(rules.multiplier(ColorType.RED, ColorType.GREEN), 1.5), "red > green +50%")
 	failures += _check(is_equal_approx(rules.multiplier(ColorType.GREEN, ColorType.BLUE), 1.5), "green > blue +50%")
 	failures += _check(is_equal_approx(rules.multiplier(ColorType.BLUE, ColorType.RED), 1.5), "blue > red +50%")

@@ -11,7 +11,7 @@ extends Resource
 
 @export var red: Color = Color(1.0, 0.12, 0.22, 1.0)
 @export var green: Color = Color(0.12, 1.0, 0.38, 1.0)
-@export var blue: Color = Color(0.12, 0.20, 1.0, 1.0)
+@export var blue: Color = Color(0.45, 0.85, 1.0, 1.0)
 
 
 func color_for(color_index: int) -> Color:
@@ -27,7 +27,9 @@ func color_for(color_index: int) -> Color:
 
 func hdr_color_for(color_index: int) -> Color:
 	var c := color_for(color_index)
-	return Color(c.r * hdr_boost, c.g * hdr_boost, c.b * hdr_boost, 1.0)
+	# 棱镜蓝与选角预览保持同一亮度比例，避免通用 HDR 倍率把青蓝推白。
+	var boost := 1.7 if color_index == ColorType.BLUE else hdr_boost
+	return Color(c.r * boost, c.g * boost, c.b * boost, 1.0)
 
 
 func dim_color_for(color_index: int, factor: float = 0.14) -> Color:

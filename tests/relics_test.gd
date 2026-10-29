@@ -66,7 +66,7 @@ func _test_catalog() -> void:
 		if not relic.unique and relic.side == &"":
 			repeatable_neutral += 1
 	failures += _check(unique_sided == 4, "demon/angel relics are marked unique")
-	failures += _check(repeatable_neutral == 41, "most neutral relics are repeatable")
+	failures += _check(repeatable_neutral == 40, "most neutral relics are repeatable")
 	failures += _check(
 		Skills.get_relic(&"dust_knife").repeat_label() == ""
 			and Skills.get_relic(&"demon_pointed_vessel").repeat_label() == "唯一",
@@ -99,6 +99,13 @@ func _test_crit_relics() -> void:
 		"paper star grants +5% crit chance"
 	)
 	failures += _check(Skills.owned_relics.size() == owned + 1, "paper star occupies a relic slot")
+	failures += _check(Skills.grant_relic(&"dust_paper_star") and Skills.grant_relic(&"dust_paper_star")
+		and not Skills.grant_relic(&"dust_paper_star"), "paper star caps at three")
+	failures += _check(Skills.grant_relic(&"dust_knife") and Skills.grant_relic(&"dust_knife")
+		and Skills.relic_count(&"dust_knife") == 4, "knife has no stack cap")
+	failures += _check(Skills.grant_relic(&"rare_three_leaf")
+		and not Skills.grant_relic(&"rare_three_leaf"),
+		"three-leaf clover is available before luck tier one and unique")
 
 
 func _test_damage_rate_relics() -> void:
@@ -128,7 +135,8 @@ func _test_damage_rate_relics() -> void:
 
 
 func _test_consumables() -> void:
-	failures += _check(Skills.get_relic(&"dust_knife").max_stacks == 3, "knife caps at three")
+	failures += _check(Skills.get_relic(&"dust_knife").max_stacks == 0, "knife has no stack cap")
+	failures += _check(Skills.get_relic(&"dust_paper_star").max_stacks == 3, "paper star caps at three")
 	failures += _check(Skills.get_relic(&"dust_running_shoes").max_stacks == 3, "running shoes cap at three")
 	failures += _check(Skills.get_relic(&"rare_reroll").max_stacks == 10, "reroll caps at ten")
 	failures += _check(Skills.get_relic(&"rare_feast").rarity == RelicResource.RARITY_EPIC, "feast is epic")

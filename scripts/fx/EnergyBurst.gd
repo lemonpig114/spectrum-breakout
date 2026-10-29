@@ -58,7 +58,7 @@ func setup(
 	max_radius = radius
 	duration = maxf(0.05, life)
 	style = burst_style
-	# 验收微调：爆破更短促；灵魂保持紫色印记，但压低 HDR 亮度。
+	# 爆破更短促；灵魂降低亮度，保留紫色饱和度。
 	if style == STYLE_SPLASH:
 		duration = maxf(0.05, duration * 0.70)
 	elif style == STYLE_SOUL:
