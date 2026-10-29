@@ -64,7 +64,7 @@ func setup(
 	budget = attack_budget
 	shot_scale = damage_scale
 	can_split = split_allowed
-	is_derived = weapon_runtime != null and not split_allowed and shot_source == &"weapon:star"
+	is_derived = weapon_runtime != null and not split_allowed and shot_source in [&"weapon:star", &"clone"]
 	chain_triggered = false
 	sword_triggered = false
 	_returning = false
@@ -143,7 +143,7 @@ func _begin_return() -> void:
 		manager.combat.enqueue({"kind": &"sword", "origin": global_position,
 			"direction": direction, "damage": damage * 0.6,
 			"color": color_index, "heavy": false, "weapon": weapon,
-			"budget": budget, "secondary": true})
+			"budget": budget, "secondary": true, "clone": source_kind == &"clone"})
 
 
 func _on_body_entered(body: Node2D) -> void:

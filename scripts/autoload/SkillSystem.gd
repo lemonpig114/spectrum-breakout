@@ -10,7 +10,7 @@ extends Node
 
 const CATALOG := preload("res://scripts/skills/SkillCatalog.gd")
 
-const BASE_CRIT_CHANCE := 0.05
+const BASE_CRIT_CHANCE := 0.0
 const BASE_CRIT_DAMAGE := 1.5
 const BASE_WEAKNESS := 1.5
 const SPLASH_BASE_RADIUS := 80.0

@@ -108,7 +108,7 @@ func _ready() -> void:
 	stats.set_base(&"move_speed", start_speed)
 	stats.set_base(&"max_health", start_health)
 	# 全局战斗属性：技能/遗物都通过 StatBlock 修改这些值。
-	stats.set_base(&"crit_chance", 0.05)
+	stats.set_base(&"crit_chance", 0.0)
 	stats.set_base(&"crit_damage", 1.5)
 	stats.set_base(&"dodge", 0.0)
 	stats.set_base(&"elemental_damage", 0.0)

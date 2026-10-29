@@ -132,14 +132,16 @@ func _test_sprite_and_clone() -> void:
 	check(sprite.global_position.distance_to(player.global_position) < 45.0, "sprite returns close to player after dash")
 	check(field.clones.size() == 1, "clone summons at unlock")
 	var clone := field.clones[0]
-	check(is_equal_approx(clone.health, 3.0), "colored clone has three hearts")
+	check(is_equal_approx(clone.lifetime + clone._age, 20.0),
+		"colored clone lasts five seconds longer")
 	clone.set("_shot_cooldown", 0.0)
 	clone._physics_process(0.016)
 	var clone_shot := false
 	for projectile in main.projectile_manager._active:
 		if projectile.source_kind == &"clone":
 			clone_shot = true
-			check(projectile.pierce == 0, "clone shot does not inherit pierce")
+			check(projectile.pierce == int(player.weapon.stats.get_value(&"pierce")),
+				"clone shot inherits weapon pierce")
 			break
 	check(clone_shot, "clone fires a pooled single shot")
 	enemy.queue_free()

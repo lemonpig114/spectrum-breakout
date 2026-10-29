@@ -268,10 +268,10 @@ static func build() -> Array[SkillNodeResource]:
 		], [&"crit"]
 	))
 	nodes.append(_node(
-		&"crit_2", "致命", "暴击率 +15%\n暴击伤害 +50%",
+		&"crit_2", "致命", "暴击率 +25%\n暴击伤害 +50%",
 		&"crit", "暴击", 2, crit_t1,
 		[
-			_mod(&"crit_chance", OP_FLAT, 0.15, T_P),
+			_mod(&"crit_chance", OP_FLAT, 0.25, T_P),
 			_mod(&"crit_damage", OP_FLAT, 0.50, T_P),
 		], [&"crit"]
 	))
@@ -376,14 +376,14 @@ static func build() -> Array[SkillNodeResource]:
 	# ── 16. 分身线 ────────────────────────────────────────────────
 	var clone_t1: Array[StringName] = [&"clone_1"]
 	var clone_t4: Array[StringName] = [&"clone_2", &"clone_3"]
-	nodes.append(_node(&"clone_1", "镜像", "每 20 秒召唤一名持续 20 秒的分身\n分身有 2 颗心并独立射击",
+	nodes.append(_node(&"clone_1", "镜像", "每 15 秒召唤一名持续 15 秒的分身\n继承主武器与移动速度，最多 20 名",
 		&"clone", "分身", 1, [], [], [&"clone"]))
-	nodes.append(_node(&"clone_2", "共鸣镜像", "召唤伤害倍率 +40%",
+	nodes.append(_node(&"clone_2", "共鸣镜像", "召唤伤害倍率 +40%\n召唤速度 +20%",
 		&"clone", "分身", 2, clone_t1,
 		[_mod(&"summon_damage", OP_ADD, 0.40, T_P)], [&"clone"]))
-	nodes.append(_node(&"clone_3", "染色镜像", "分身获得色彩并主动切换\n生命 +1 颗心",
+	nodes.append(_node(&"clone_3", "染色镜像", "分身获得色彩并主动切换\n持续时间 +5 秒",
 		&"clone", "分身", 3, clone_t1, [], [&"clone"]))
-	nodes.append(_node(&"clone_4", "终末镜像", "召唤间隔减半\n分身消失时爆发 300% 可暴击伤害",
+	nodes.append(_node(&"clone_4", "终末镜像", "召唤间隔变为 10 秒\n分身消失时在更大范围爆发 300% 可暴击伤害",
 		&"clone", "分身", 4, clone_t4, [], [&"clone"]))
 
 	# ── 17. 法阵线 ────────────────────────────────────────────────

@@ -59,7 +59,7 @@ func fire(
 	budget: Dictionary = {},
 	can_split: bool = true
 ) -> void:
-	var derived := weapon != null and not can_split and source_kind == &"weapon:star"
+	var derived := weapon != null and not can_split and source_kind in [&"weapon:star", &"clone"]
 	if derived and derived_active >= MAX_DERIVED_ACTIVE:
 		return
 	var projectile: Projectile = null

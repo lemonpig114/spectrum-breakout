@@ -210,6 +210,36 @@ func _ready() -> void:
 		console._submit("rw boomerang")
 		failures += _check(player.weapon.owned_forms.is_empty() and player.weapon.traits.is_empty()
 			and player.weapon.primary_form == &"", "console removes all weapons and restores basic attack")
+	player.weapon.acquire_form(&"sword")
+	var clone := MirrorClone.new()
+	main.world.add_child(clone)
+	clone.setup(player, player.global_position)
+	clone._shot_cooldown = 0.0
+	enemy.global_position = player.global_position + Vector2(80.0, 0.0)
+	enemy.health = enemy.max_health
+	clone._physics_process(1.0 / 60.0)
+	for frame in 20:
+		combat._physics_process(1.0 / 60.0)
+	failures += _check(enemy.health < enemy.max_health and is_equal_approx(clone.lifetime, 15.0 - 1.0 / 60.0),
+		"clone inherits sword and starts with 15-second lifetime")
+	failures += _check(clone.global_position.distance_to(player.global_position) <= player.effective_move_speed() / 60.0 + 0.1,
+		"clone movement uses player speed")
+	clone.queue_free()
+	combat._sword_waves.clear()
+	player.weapon.acquire_form(&"star")
+	player.weapon.select_primary(&"star")
+	combat._derivative_frame = -1
+	combat.fire_weapon(player.global_position, Vector2.RIGHT, player.weapon.stats,
+		player.color_index, false, player.weapon, true, 1.4)
+	var clone_star: Projectile = main.projectile_manager._active.back()
+	failures += _check(clone_star.source_kind == &"clone" and clone_star.batch_star,
+		"clone inherits star primary and keeps clone attribution")
+	clone_star._on_body_entered(enemy)
+	combat._physics_process(1.0 / 60.0)
+	failures += _check(main.projectile_manager._active.size() == 5,
+		"clone star inherits split effect")
+	for projectile in main.projectile_manager._active.duplicate():
+		main.projectile_manager.release(projectile)
 	print("WEAPON FUSION TEST %s" % ("PASS" if failures == 0 else "FAIL %d" % failures))
 	get_tree().quit(0 if failures == 0 else 1)
 

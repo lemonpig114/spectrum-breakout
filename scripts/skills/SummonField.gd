@@ -57,8 +57,8 @@ func _tick_clones(delta: float) -> void:
 	_clone_timer -= delta
 	if _clone_timer > 0.0:
 		return
-	_clone_timer = 10.0 if Skills.is_unlocked(&"clone_4") else 20.0
-	if clones.size() >= 2:
+	_clone_timer = 10.0 if Skills.is_unlocked(&"clone_4") else (15.0 / (1.2 if Skills.is_unlocked(&"clone_2") else 1.0))
+	if clones.size() >= 20:
 		return
 	var clone: MirrorClone = CLONE_SCRIPT.new()
 	add_child(clone)

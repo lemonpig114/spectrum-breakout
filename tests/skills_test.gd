@@ -584,7 +584,8 @@ func _test_crit_line() -> void:
 	var crit_damage_before := Skills.get_crit_damage(null)
 	_unlock(&"crit_1")
 	_unlock(&"crit_2")
-	failures += _check(Skills.get_crit_chance(null) > crit_before, "crit chance rises")
+	failures += _check(is_equal_approx(Skills.get_crit_chance(null), crit_before + 0.45),
+		"crit tiers one and two add 45 percentage points")
 	failures += _check(
 		is_equal_approx(Skills.get_crit_damage(null), crit_damage_before + 0.7),
 		"crit line adds 70% crit damage"

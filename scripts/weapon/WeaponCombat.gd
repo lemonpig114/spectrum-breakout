@@ -92,26 +92,30 @@ func _add_visual(visual: Dictionary) -> void:
 
 
 func fire_weapon(origin: Vector2, direction: Vector2, stats: StatBlock,
-		color_index: int, heavy: bool, weapon: WeaponRuntime) -> void:
+		color_index: int, heavy: bool, weapon: WeaponRuntime,
+		clone_attack: bool = false, summon_scale: float = 1.0) -> void:
 	var form := weapon.primary_form
 	var budget := new_budget()
 	var scale := 1.0
 	var data := weapon.primary_data()
 	if data != null:
 		scale = data.damage_scale
-	var damage := _weapon_damage(stats, color_index, heavy) * scale
+	var damage := _weapon_damage(stats, color_index, heavy) * scale * summon_scale
 	match form:
 		&"sword":
 			enqueue({"kind": &"sword", "origin": origin, "direction": direction,
 				"damage": damage, "color": color_index, "heavy": heavy,
-				"weapon": weapon, "budget": budget, "secondary": false}, false)
+				"weapon": weapon, "budget": budget, "secondary": false,
+				"clone": clone_attack, "summon_scale": summon_scale}, false)
 		&"lightning":
 			enqueue({"kind": &"lightning", "origin": origin, "direction": direction,
 				"damage": damage, "color": color_index, "heavy": heavy,
-				"weapon": weapon, "budget": budget, "secondary": false}, false)
+				"weapon": weapon, "budget": budget, "secondary": false,
+				"clone": clone_attack, "summon_scale": summon_scale}, false)
 		_:
-			manager.fire(origin, direction, stats, color_index, weapon.core, heavy, scale,
-				1.0, 1.0, 1.0, true, StringName("weapon:%s" % String(form)), weapon, budget)
+			manager.fire(origin, direction, stats, color_index, weapon.core, heavy, scale * summon_scale,
+				0.8 if clone_attack else 1.0, 1.0, 1.0, true,
+				&"clone" if clone_attack else StringName("weapon:%s" % String(form)), weapon, budget)
 
 
 func _weapon_damage(stats: StatBlock, color_index: int, heavy: bool) -> float:
@@ -179,30 +183,34 @@ func on_projectile_hit(projectile: Node, enemy: Enemy, first_hit: bool, last_hit
 		projectile.direction, projectile.is_heavy, projectile.source_kind,
 		first_hit, last_hit, projectile.allow_crit, attribution)
 	var weapon: WeaponRuntime = projectile.weapon
-	if weapon == null or projectile.source_kind == &"clone":
+	if weapon == null:
 		return
 	if weapon.has_form(&"lightning") and form != &"lightning" and not projectile.chain_triggered:
 		projectile.chain_triggered = true
 		enqueue({"kind": &"lightning", "origin": enemy.global_position,
 			"direction": projectile.direction, "damage": projectile.damage * 0.5,
 			"color": projectile.color_index, "heavy": false, "weapon": weapon,
-			"budget": projectile.budget, "secondary": true, "excluded": enemy})
+			"budget": projectile.budget, "secondary": true, "excluded": enemy,
+			"clone": projectile.source_kind == &"clone"})
 	if weapon.has_form(&"star") and form != &"star" and projectile.can_split:
 		projectile.can_split = false
 		enqueue({"kind": &"split", "origin": enemy.global_position,
 			"direction": projectile.direction, "damage_scale": projectile.shot_scale * 0.5,
-			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget})
+			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget,
+			"clone": projectile.source_kind == &"clone"})
 	elif form == &"star" and projectile.can_split:
 		projectile.can_split = false
 		enqueue({"kind": &"split", "origin": enemy.global_position,
 			"direction": projectile.direction, "damage_scale": projectile.shot_scale * 0.5,
-			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget})
+			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget,
+			"clone": projectile.source_kind == &"clone"})
 	if weapon.has_form(&"sword") and form != &"sword" and form != &"boomerang" and not projectile.sword_triggered:
 		projectile.sword_triggered = true
 		enqueue({"kind": &"sword", "origin": enemy.global_position,
 			"direction": projectile.direction, "damage": projectile.damage * 0.6,
 			"color": projectile.color_index, "heavy": false, "weapon": weapon,
-			"budget": projectile.budget, "secondary": true})
+			"budget": projectile.budget, "secondary": true,
+			"clone": projectile.source_kind == &"clone"})
 
 
 func _sword(event: Dictionary) -> void:
@@ -213,7 +221,8 @@ func _sword(event: Dictionary) -> void:
 		"age": 0.0, "returning": false, "hit_ids": {}, "return_ids": {},
 		"first_hit": true, "damage": event.damage, "color": event.color,
 		"heavy": event.heavy, "weapon": event.weapon, "budget": event.budget,
-		"secondary": event.secondary,
+		"secondary": event.secondary, "clone": event.get("clone", false),
+		"summon_scale": event.get("summon_scale", 1.0),
 		"can_return": not bool(event.secondary) and (event.weapon as WeaponRuntime).has_form(&"boomerang"),
 	})
 	queue_redraw()
@@ -250,7 +259,7 @@ func _advance_sword_waves(delta: float) -> void:
 			wave.first_hit = false
 			resolve_hit(self, enemy, float(wave.damage) * (0.65 if bool(wave.returning) else 1.0),
 				int(wave.color), direction, bool(wave.heavy) and not bool(wave.returning),
-				&"weapon_sword", first, true, true, &"sword")
+				&"clone" if bool(wave.clone) else &"weapon_sword", first, true, true, &"sword")
 			enemy.apply_knockback(wave.origin, 220.0 if enemy.type_data == null or not enemy.type_data.is_boss else 55.0, 0.16)
 			if first and not bool(wave.secondary) and not bool(wave.returning):
 				_sword_first_hit_effects(wave, enemy)
@@ -262,11 +271,13 @@ func _sword_first_hit_effects(wave: Dictionary, enemy: Enemy) -> void:
 		enqueue({"kind": &"lightning", "origin": enemy.global_position,
 			"direction": wave.direction, "damage": float(wave.damage) * 0.5,
 			"color": wave.color, "heavy": false, "weapon": weapon,
-			"budget": wave.budget, "secondary": true, "excluded": enemy})
+			"budget": wave.budget, "secondary": true, "excluded": enemy,
+			"clone": wave.clone})
 	if weapon.has_form(&"star"):
 		enqueue({"kind": &"split", "origin": enemy.global_position,
-			"direction": wave.direction, "damage_scale": 0.6,
-			"color": wave.color, "weapon": weapon, "budget": wave.budget})
+			"direction": wave.direction, "damage_scale": 0.6 * float(wave.summon_scale),
+			"color": wave.color, "weapon": weapon, "budget": wave.budget,
+			"clone": wave.clone})
 
 
 func _draw_sword_wave(wave: Dictionary) -> void:
@@ -355,7 +366,8 @@ func _lightning(event: Dictionary) -> void:
 		var damage := float(event.damage) * (0.5 if hop >= total - pierce else 1.0)
 		resolve_hit(self, best, damage, int(event.color),
 			(best.global_position - origin).normalized(), bool(event.heavy),
-			&"weapon_lightning", hop == 0, hop == total - 1, true, &"lightning")
+			&"clone" if bool(event.get("clone", false)) else &"weapon_lightning",
+			hop == 0, hop == total - 1, true, &"lightning")
 		_add_visual({"kind": &"line", "from": origin, "to": best.global_position,
 			"color": event.color, "time": 0.17})
 		origin = best.global_position
@@ -365,16 +377,19 @@ func _lightning(event: Dictionary) -> void:
 	if not bool(event.secondary) and path.size() > 1:
 		if weapon.has_form(&"star"):
 			enqueue({"kind": &"split", "origin": origin,
-				"direction": event.direction, "damage_scale": 0.5,
-				"color": event.color, "weapon": weapon, "budget": event.budget})
+				"direction": event.direction, "damage_scale": 0.5 * float(event.get("summon_scale", 1.0)),
+				"color": event.color, "weapon": weapon, "budget": event.budget,
+				"clone": event.get("clone", false)})
 		if weapon.has_form(&"boomerang"):
 			enqueue({"kind": &"return_arc", "path": path, "damage": float(event.damage) * 0.5,
-				"color": event.color, "budget": event.budget})
+				"color": event.color, "budget": event.budget,
+				"clone": event.get("clone", false)})
 		if weapon.has_form(&"sword"):
 			enqueue({"kind": &"sword", "origin": origin,
 				"direction": event.direction, "damage": float(event.damage) * 0.6,
 				"color": event.color, "heavy": false, "weapon": weapon,
-				"budget": event.budget, "secondary": true})
+				"budget": event.budget, "secondary": true,
+				"clone": event.get("clone", false)})
 
 
 func _split(event: Dictionary) -> void:
@@ -387,7 +402,9 @@ func _split(event: Dictionary) -> void:
 		budget.spawned = int(budget.spawned) + 1
 		manager.fire(event.origin + direction * 12.0, direction, player.weapon.stats,
 			int(event.color), player.weapon.core, false, float(event.damage_scale),
-			0.65, 1.0, 0.7, false, &"weapon:star", event.weapon, budget, false)
+			0.65, 1.0, 0.7, false,
+			&"clone" if bool(event.get("clone", false)) else &"weapon:star",
+			event.weapon, budget, false)
 
 
 func _return_arc(event: Dictionary) -> void:
@@ -405,4 +422,6 @@ func _return_arc(event: Dictionary) -> void:
 			if Geometry2D.get_closest_point_to_segment(enemy.global_position, start, finish).distance_to(enemy.global_position) <= enemy.radius + 8.0:
 				hit_ids[enemy.get_instance_id()] = true
 				resolve_hit(self, enemy, float(event.damage), int(event.color),
-					(finish - start).normalized(), false, &"weapon_lightning", false, true, true, &"lightning")
+					(finish - start).normalized(), false,
+					&"clone" if bool(event.get("clone", false)) else &"weapon_lightning",
+					false, true, true, &"lightning")
