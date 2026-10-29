@@ -58,6 +58,18 @@ func acquire_form(id: StringName) -> bool:
 	return true
 
 
+func remove_form(id: StringName) -> bool:
+	if not owned_forms.has(id):
+		return false
+	owned_forms.erase(id)
+	var weapon_trait := ContentDB.get_data(id) as WeaponTraitResource
+	if weapon_trait != null:
+		traits.erase(weapon_trait)
+	if primary_form == id:
+		primary_form = owned_forms[0] if not owned_forms.is_empty() else &""
+	return true
+
+
 func select_primary(id: StringName) -> bool:
 	if not owned_forms.has(id):
 		return false

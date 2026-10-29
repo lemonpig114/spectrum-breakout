@@ -13,6 +13,7 @@ Boss 击杀后打开武器三选一；角色专属天赋奖励位留待内容确
 仅调试版桌面按 `~`（键盘左上角反引号键）打开，Tab 补全，方向键上下翻历史，Enter 执行，Esc 或 `~` 关闭。手机版不创建控制台。正式版启用方式以后由配置文件决定。
 
 - `w sword|lightning|star|boomerang`：直接获得武器，然后打开已拥有武器的主形态选择面板。
+- `rw sword|lightning|star|boomerang`：移除已拥有武器；若移除主形态，自动选剩余第一把，全部移除后恢复基础弹。
 - `primary sword|lightning|star|boomerang`：切换已拥有的主武器。
 - `e triangle|square|hex|plane|round 数量 [red|green|blue]`：在玩家周围刷怪，单次最多 500 只。
 - `boss`、`gold 数量`、`xp 数量`、`clear`、`fps`、`help`。

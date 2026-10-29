@@ -8,7 +8,7 @@ const ENEMY_ALIASES := {
 	"triangle": &"chaser_triangle", "square": &"chaser_square",
 	"hex": &"chaser_hex", "plane": &"ranged_plane", "round": &"chaser_round",
 }
-const COMMANDS := ["help", "w", "primary", "e", "boss", "gold", "xp", "clear", "fps"]
+const COMMANDS := ["help", "w", "rw", "primary", "e", "boss", "gold", "xp", "clear", "fps"]
 
 var main: Node2D
 var _input: LineEdit
@@ -122,7 +122,7 @@ func _complete() -> void:
 	else:
 		var command := parts[0]
 		prefix = "" if _input.text.ends_with(" ") else parts[-1]
-		var candidates := WEAPONS if command in ["w", "primary"] else ENEMY_ALIASES.keys()
+		var candidates := WEAPONS if command in ["w", "rw", "primary"] else ENEMY_ALIASES.keys()
 		for candidate in candidates:
 			if String(candidate).begins_with(prefix):
 				options.append(String(candidate))
@@ -146,8 +146,9 @@ func _submit(raw: String) -> void:
 	_log("> " + line)
 	var args := line.split(" ", false)
 	match args[0]:
-		"help": _log("w 剑名 | primary 剑名 | e 怪名 数量 [red/green/blue] | boss | gold 数量 | xp 数量 | clear | fps")
+		"help": _log("w 剑名 | rw 剑名 | primary 剑名 | e 怪名 数量 [red/green/blue] | boss | gold 数量 | xp 数量 | clear | fps")
 		"w": _weapon(args)
+		"rw": _remove_weapon(args)
 		"primary": _primary(args)
 		"e": _enemies(args)
 		"boss":
@@ -183,6 +184,17 @@ func _weapon(args: PackedStringArray) -> void:
 		main.open_debug_weapon_choice()
 	else:
 		_log("武器已拥有或资源缺失")
+
+
+func _remove_weapon(args: PackedStringArray) -> void:
+	if args.size() < 2 or not WEAPONS.has(args[1]):
+		_log("用法：rw sword|lightning|star|boomerang")
+		return
+	if not main.player.weapon.remove_form(StringName(args[1])):
+		_log("尚未拥有该武器")
+		return
+	var primary := String(main.player.weapon.primary_form)
+	_log("已移除：%s；当前主形态：%s" % [args[1], primary if not primary.is_empty() else "基础弹"])
 
 
 func _primary(args: PackedStringArray) -> void:

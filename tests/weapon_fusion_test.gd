@@ -200,6 +200,16 @@ func _ready() -> void:
 		main.weapon_choice_panel._choose(star_index)
 		failures += _check(player.weapon.primary_form == &"star" and not get_tree().paused,
 			"console primary choice applies selected form")
+		console._input.text = "rw sw"
+		console._complete()
+		failures += _check(console._input.text == "rw sword ", "console Tab completes remove weapon")
+		console._submit("rw star")
+		failures += _check(not player.weapon.has_form(&"star") and player.weapon.primary_form == &"sword",
+			"console removes primary and selects remaining form")
+		console._submit("rw sword")
+		console._submit("rw boomerang")
+		failures += _check(player.weapon.owned_forms.is_empty() and player.weapon.traits.is_empty()
+			and player.weapon.primary_form == &"", "console removes all weapons and restores basic attack")
 	print("WEAPON FUSION TEST %s" % ("PASS" if failures == 0 else "FAIL %d" % failures))
 	get_tree().quit(0 if failures == 0 else 1)
 
