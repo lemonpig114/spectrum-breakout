@@ -37,6 +37,7 @@ func _ready() -> void:
 	_test_aged_merge()
 	await _test_enemy_drop()
 	await _test_chest_drop()
+	_test_chest_expiry()
 	await _test_collect_clamp()
 	await _test_pickup_range()
 	# 吸附要在解锁全屏吸取（gold_3 / xp_4）之前测，否则掉落生成即自动起飞。
@@ -44,9 +45,52 @@ func _ready() -> void:
 	_test_unpicked_cap()
 	await _test_auto_collect()
 	await _test_streak_overflow()
+	_test_auto_chest()
 
 	print("PICKUP TEST %s (%d failures)" % ["PASS" if failures == 0 else "FAIL", failures])
 	get_tree().quit(0 if failures == 0 else 1)
+
+
+func _test_auto_chest() -> void:
+	Pickups.clear()
+	Skills.clear_relic_offers()
+	var luck_before := Skills.luck()
+	failures += _check(Skills.grant_relic(&"epic_treasure_watch"), "treasure watch can be acquired")
+	failures += _check(is_equal_approx(Skills.luck(), luck_before + 5.0), "treasure watch adds five luck")
+	failures += _check(not Skills.grant_relic(&"epic_treasure_watch"), "treasure watch is unique")
+	var gold_before := RunState.gold
+	var xp_before := RunState.xp
+	var level_before := RunState.level
+	field.spawn_chest(player.global_position + Vector2(1000.0, 0.0))
+	field._process(2.9)
+	failures += _check(field.total_count() == 1, "remote chest waits until three seconds")
+	field._process(0.2)
+	failures += _check(field.total_count() == 0, "remote chest automatically opens without leaving currency drops")
+	failures += _check(RunState.gold > gold_before or RunState.xp > xp_before or RunState.level > level_before or not Skills.pending_relic_offers.is_empty(), "auto-open credits resources or offers a relic")
+	field._process(1.0)
+	failures += _check(field.total_count() == 0, "auto-open chest is removed once")
+	Skills.clear_relic_offers()
+
+
+func _test_chest_expiry() -> void:
+	Pickups.clear()
+	var gold_before := RunState.gold
+	var xp_before := RunState.xp
+	var offers_before := Skills.pending_relic_offers.size()
+	field.spawn_chest(player.global_position + Vector2(1000.0, 0.0))
+	field.spawn_gold(player.global_position + Vector2(1300.0, 0.0), 1)
+	var ages: PackedFloat32Array = field.get("_age")
+	ages[0] = 89.0
+	ages[1] = 200.0
+	field.set("_age", ages)
+	field._process(1.0)
+	failures += _check(field.total_count() == 2, "chest remains when blinking starts at 90 seconds")
+	field._process(9.9)
+	failures += _check(field.total_count() == 2, "chest remains during the ten-second warning")
+	field._process(0.2)
+	failures += _check(field.total_count() == 1 and field.currency_count() == 1, "only chest expires after 100 seconds")
+	failures += _check(RunState.gold == gold_before and RunState.xp == xp_before and Skills.pending_relic_offers.size() == offers_before, "expired chest grants no reward")
+	Pickups.clear()
 
 
 func _test_ground_pickup() -> void:

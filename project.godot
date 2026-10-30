@@ -11,8 +11,9 @@ config_version=5
 [application]
 
 config/name="光谱突围"
-config/quit_on_go_back=false
+config/version="0.2.0"
 run/main_scene="res://scenes/boot.tscn"
+config/quit_on_go_back=false
 config/features=PackedStringArray("4.4", "Forward Plus")
 run/max_fps=60
 config/icon="res://icon.svg"
@@ -28,6 +29,7 @@ Pickups="*res://scripts/autoload/PickupSystem.gd"
 FX="*res://scripts/autoload/FX.gd"
 Audio="*res://scripts/autoload/Audio.gd"
 Director="*res://scripts/autoload/Director.gd"
+GameSave="*res://scripts/autoload/GameSave.gd"
 
 [display]
 
@@ -36,8 +38,12 @@ window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[physics]
+
+2d/run_on_separate_thread=true
+
 [rendering]
 
-viewport/hdr_2d=true
 textures/vram_compression/import_etc2_astc=true
+viewport/hdr_2d=true
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)

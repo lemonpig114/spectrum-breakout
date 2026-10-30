@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"scythe"
+display_name = "镰刀"
+description = "250% 武器伤害、50% 射速；围绕角色斩击。"
+brief = "环身 · 重斩"
+damage_scale = 2.5
+fire_rate_scale = 0.5
+tags = Array[StringName]([&"melee", &"area"])

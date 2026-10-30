@@ -20,6 +20,12 @@ var _started := false
 
 
 func _screen_ready() -> void:
+	var back := Button.new()
+	back.text = "返回主菜单"
+	back.position = Vector2(28, 28)
+	back.custom_minimum_size = Vector2(130, 40)
+	back.pressed.connect(func(): change_screen("res://scenes/main_menu.tscn"))
+	add_child(back)
 	_codex_panel = preload("res://scripts/ui/CodexPanel.gd").new()
 	add_child(_codex_panel)
 	_codex_panel.hide()

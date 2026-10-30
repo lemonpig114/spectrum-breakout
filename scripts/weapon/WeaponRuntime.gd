@@ -10,6 +10,8 @@ var pipeline := ModifierPipeline.new()
 var traits: Array[WeaponTraitResource] = []
 var owned_forms: Array[StringName] = []
 var primary_form: StringName = &""
+const PRIMARY_ORDER: Array[StringName] = [&"sword", &"scythe", &"wave", &"boomerang",
+	&"sprite", &"star", &"lightning", &"cannon"]
 
 
 func _init(core_resource: WeaponCoreResource = null) -> void:
@@ -53,8 +55,7 @@ func acquire_form(id: StringName) -> bool:
 		return false
 	owned_forms.append(id)
 	add_trait(weapon_trait)
-	if primary_form == &"":
-		primary_form = id
+	refresh_primary()
 	return true
 
 
@@ -65,9 +66,16 @@ func remove_form(id: StringName) -> bool:
 	var weapon_trait := ContentDB.get_data(id) as WeaponTraitResource
 	if weapon_trait != null:
 		traits.erase(weapon_trait)
-	if primary_form == id:
-		primary_form = owned_forms[0] if not owned_forms.is_empty() else &""
+	refresh_primary()
 	return true
+
+
+func refresh_primary() -> void:
+	primary_form = &""
+	for id in PRIMARY_ORDER:
+		if owned_forms.has(id):
+			primary_form = id
+			return
 
 
 func select_primary(id: StringName) -> bool:
@@ -82,6 +90,8 @@ func has_form(id: StringName) -> bool:
 
 
 func primary_data() -> WeaponTraitResource:
+	if primary_form in [&"sword", &"scythe"] and has_form(&"sword") and has_form(&"scythe"):
+		return ContentDB.get_data(&"scythe") as WeaponTraitResource
 	return ContentDB.get_data(primary_form) as WeaponTraitResource
 
 

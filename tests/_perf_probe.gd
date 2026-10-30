@@ -45,6 +45,13 @@ var _physics_ms_sum := 0.0
 var _max_process_ms := 0.0
 var _max_physics_ms := 0.0
 var _projectiles_peak := 0
+var _sample_clock := 0
+var _sample_process_frames := 0
+var _gpu_ms := 0.0
+var _render_cpu_ms := 0.0
+var _last_sample_us := 0
+var _sample_seconds := 0.0
+var _frame_times := PackedFloat64Array()
 
 
 func _ready() -> void:
@@ -95,6 +102,7 @@ func _ready() -> void:
 	add_child(_main)
 
 	await get_tree().create_timer(2.8).timeout
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 
 	Director.stop()
 	RunState.level = 1000000
@@ -111,6 +119,11 @@ func _ready() -> void:
 
 	_fill_enemies(_target_enemies)
 	_fill_projectiles(_target_projectiles)
+	if OS.get_cmdline_user_args().has("--blackhole-skill"):
+		for id in [&"blackhole_1", &"blackhole_2", &"blackhole_3", &"blackhole_4"]:
+			Skills.unlock(id, true)
+		var hole := _main.get_node("World/BlackHoleField") as BlackHoleField
+		hole.cast(_main.player.global_position + Vector2(150.0, 0.0))
 	var pickup_field := _main.get_node_or_null("World/PickupField") as PickupField
 	if pickup_field != null:
 		if _pickup_redraw_60:
@@ -169,8 +182,22 @@ func _process(delta: float) -> void:
 func _record_sample(delta: float) -> void:
 	if delta <= 0.0:
 		return
+	var now := Time.get_ticks_usec()
+	if _last_sample_us > 0:
+		delta = float(now - _last_sample_us) / 1000000.0
+	_last_sample_us = now
+	_sample_seconds += delta
+	_frame_times.append(delta * 1000.0)
 
+	if _frames == 0:
+		preload("res://scripts/game/CombatProfiler.gd").reset()
+		_sample_clock = Time.get_ticks_usec()
+		_sample_process_frames = Engine.get_process_frames()
+	if _frames < 3 and OS.get_cmdline_user_args().has("--hotspots"):
+		print("FRAME SAMPLE dt=%.4f engine_frame=%d physics=%d scale=%.2f" % [delta, Engine.get_process_frames(), Engine.get_physics_frames(), Engine.time_scale])
 	var fps := 1.0 / delta
+	_gpu_ms += RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+	_render_cpu_ms += RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid())
 	_frames += 1
 	_fps_sum += fps
 	_min_fps = minf(_min_fps, fps)
@@ -196,7 +223,7 @@ func _finish() -> void:
 
 	var enemies := get_tree().get_nodes_in_group("enemies").size()
 	_min_enemies = mini(_min_enemies, enemies)
-	var average_fps := _fps_sum / maxf(1.0, float(_frames))
+	var average_fps := float(_frames) / maxf(0.000001, _sample_seconds)
 	# 不死模式要求真正维持 70 个敌人；--mortal 下敌人会被击杀，
 	# 数量不能作为通过条件，改为要求战斗持续且帧率没有塌陷。
 	var ok := average_fps >= 50.0 and enemies > 0
@@ -228,6 +255,12 @@ func _finish() -> void:
 		_freeze,
 		_hide_enemies,
 	])
+	preload("res://scripts/game/CombatProfiler.gd").report(_frames)
+	print("FRAME CLOCK samples=%d engine_frames=%d wall_seconds=%.2f" % [_frames, Engine.get_process_frames() - _sample_process_frames, (Time.get_ticks_usec() - _sample_clock) / 1000000.0])
+	print("RENDER TIME gpu_ms=%.2f cpu_ms=%.2f" % [_gpu_ms / maxf(1.0, _frames), _render_cpu_ms / maxf(1.0, _frames)])
+	_frame_times.sort()
+	if not _frame_times.is_empty():
+		print("FRAME PERCENTILES p95_ms=%.2f p99_ms=%.2f" % [_frame_times[int((_frame_times.size() - 1) * 0.95)], _frame_times[int((_frame_times.size() - 1) * 0.99)]])
 	get_tree().quit(0 if ok else 1)
 
 

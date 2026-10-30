@@ -3,12 +3,12 @@ extends Control
 
 ## 桌面调试包专用；正式版的启用策略以后从配置文件读取。
 const ENEMY_SCENE := preload("res://scenes/enemies/enemy.tscn")
-const WEAPONS := ["sword", "lightning", "star", "boomerang"]
+const WEAPONS := ["sword", "lightning", "star", "boomerang", "cannon", "sprite", "wave", "scythe"]
 const ENEMY_ALIASES := {
 	"triangle": &"chaser_triangle", "square": &"chaser_square",
 	"hex": &"chaser_hex", "plane": &"ranged_plane", "round": &"chaser_round",
 }
-const COMMANDS := ["help", "w", "rw", "primary", "e", "boss", "gold", "xp", "clear", "fps"]
+const COMMANDS := ["help", "w", "rw", "r", "bh", "e", "boss", "gold", "xp", "clear", "fps"]
 
 var main: Node2D
 var _input: LineEdit
@@ -122,7 +122,12 @@ func _complete() -> void:
 	else:
 		var command := parts[0]
 		prefix = "" if _input.text.ends_with(" ") else parts[-1]
-		var candidates := WEAPONS if command in ["w", "rw", "primary"] else ENEMY_ALIASES.keys()
+		var candidates := WEAPONS if command in ["w", "rw"] else (["hex", "square"] if command == "boss" else ENEMY_ALIASES.keys())
+		if command == "r":
+			candidates = ["lucifer", "michael"]
+			for relic in Skills.relics:
+				candidates.append(String(relic.id))
+				candidates.append(relic.display_name)
 		for candidate in candidates:
 			if String(candidate).begins_with(prefix):
 				options.append(String(candidate))
@@ -146,13 +151,20 @@ func _submit(raw: String) -> void:
 	_log("> " + line)
 	var args := line.split(" ", false)
 	match args[0]:
-		"help": _log("w 剑名 | rw 剑名 | primary 剑名 | e 怪名 数量 [red/green/blue] | boss | gold 数量 | xp 数量 | clear | fps")
+		"help": _log("w 武器名 | rw 武器名 | r 遗物名/ID | bh 阶数 | e 怪名 数量 [red/green/blue] | boss [hex/square] | gold 数量 | xp 数量 | clear | fps")
+		"r": _relic(args)
 		"w": _weapon(args)
+		"bh":
+			var tier := clampi(_number(args, 1, 1), 1, 4)
+			for i in range(1, tier + 1):
+				Skills.unlock(StringName("blackhole_%d" % i))
+			var hole := main.get_node("World/BlackHoleField") as BlackHoleField
+			hole.cast(main.player.global_position + Vector2(180, 0))
+			_log("黑洞技能 %d 阶，已释放" % tier)
 		"rw": _remove_weapon(args)
-		"primary": _primary(args)
 		"e": _enemies(args)
 		"boss":
-			var boss := Director.spawn_boss_now(main.player.global_position + Vector2(300, 0))
+			var boss: Enemy = Director.spawn_hex_boss_now(main.player.global_position + Vector2(360, 0)) if args.size() > 1 and args[1] == "hex" else Director.spawn_boss_now(main.player.global_position + Vector2(300, 0))
 			_log("Boss 已生成" if boss != null else "Boss 已在场上或无法生成")
 		"gold":
 			RunState.add_gold(_number(args, 1, 100))
@@ -173,35 +185,41 @@ func _submit(raw: String) -> void:
 		_input.grab_focus()
 
 
+func _relic(args: PackedStringArray) -> void:
+	if args.size() < 2:
+		_log("用法：r 遗物中文名/ID，例如 r 路西法、r michael；Tab补全")
+		return
+	var query := args[1]
+	if query in ["lucifer", "michael"]:
+		query = "iridescent_" + query
+	for relic in Skills.relics:
+		if String(relic.id) == query or relic.display_name == query:
+			_log("已获得：" + relic.display_name if Skills.grant_relic(relic.id) else "无法获得（唯一、叠加上限或解锁限制）")
+			return
+	_log("未找到遗物，按Tab查看可补全名称")
+
+
 func _weapon(args: PackedStringArray) -> void:
 	if args.size() < 2 or not WEAPONS.has(args[1]):
-		_log("用法：w sword|lightning|star|boomerang")
+		_log("用法：w sword|lightning|star|boomerang|cannon|sprite|wave|scythe")
 		return
 	var id := StringName(args[1])
 	if main.player.weapon.acquire_form(id):
-		_log("已获得：%s；请选择主形态" % args[1])
-		_close()
-		main.open_debug_weapon_choice()
+		var data: WeaponTraitResource = main.player.weapon.primary_data()
+		_log("已获得：%s；自动主形态：%s" % [args[1], data.display_name])
 	else:
 		_log("武器已拥有或资源缺失")
 
 
 func _remove_weapon(args: PackedStringArray) -> void:
 	if args.size() < 2 or not WEAPONS.has(args[1]):
-		_log("用法：rw sword|lightning|star|boomerang")
+		_log("用法：rw sword|lightning|star|boomerang|cannon|sprite|wave|scythe")
 		return
 	if not main.player.weapon.remove_form(StringName(args[1])):
 		_log("尚未拥有该武器")
 		return
 	var primary := String(main.player.weapon.primary_form)
 	_log("已移除：%s；当前主形态：%s" % [args[1], primary if not primary.is_empty() else "基础弹"])
-
-
-func _primary(args: PackedStringArray) -> void:
-	if args.size() < 2 or not main.player.weapon.select_primary(StringName(args[1])):
-		_log("用法：primary 已拥有的武器名")
-		return
-	_log("主形态：%s" % args[1])
 
 
 func _enemies(args: PackedStringArray) -> void:

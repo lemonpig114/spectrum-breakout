@@ -35,6 +35,9 @@ var _relation_preview := false
 var _relation_color := 0
 var _relation_time := 0.0
 var _show_debug := false
+var _fps_sample_timer := 0.0
+var _fps_text := "FPS --"
+var _endless_banner_time := 0.0
 
 
 func _ready() -> void:
@@ -47,12 +50,19 @@ func _ready() -> void:
 	EventBus.color_switch_preview.connect(_on_switch_preview)
 	EventBus.color_switch_failed.connect(_on_switch_failed)
 	EventBus.color_changed.connect(_on_color_changed)
+	EventBus.endless_mode_entered.connect(func(): _endless_banner_time = 6.0)
 	queue_redraw()
 
 
 func _process(delta: float) -> void:
+	if GameInput.show_fps:
+		_fps_sample_timer -= delta
+		if _fps_sample_timer <= 0.0:
+			_fps_sample_timer = 0.25
+			_fps_text = "FPS %d" % Engine.get_frames_per_second()
 	if RunState.is_running:
 		_hint_time += delta
+		_endless_banner_time = maxf(0.0, _endless_banner_time - delta)
 	_update_wheel(delta)
 	_selector_flash = maxf(0.0, _selector_flash - delta * 3.5)
 	_energy_flash = maxf(0.0, _energy_flash - delta * 3.0)
@@ -112,9 +122,45 @@ func _draw() -> void:
 	_draw_switch_indicator()
 	_draw_event_markers()
 	_draw_damage_flash()
+	_draw_experience_bar()
+	_draw_endless_banner()
+	if GameInput.show_fps:
+		var at := Vector2(size.x - 120.0, 104.0 + (32.0 if GameInput.touch_controls_active else 0.0))
+		draw_rect(Rect2(at + Vector2(-8, -18), Vector2(96, 26)), Color(0.01, 0.02, 0.035, 0.75))
+		draw_string(_font, at, _fps_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 14, Color(0.72, 0.91, 1.0))
 
 	if _show_debug:
 		_draw_debug_overlay()
+
+
+func _draw_endless_banner() -> void:
+	if _endless_banner_time <= 0.0:
+		return
+	var alpha := minf(1.0, minf((6.0 - _endless_banner_time) / 0.3, _endless_banner_time / 0.8))
+	var center := size * Vector2(0.5, 0.32)
+	var width := minf(size.x - 40.0, 760.0)
+	draw_rect(Rect2(center - Vector2(width * 0.5, 54), Vector2(width, 108)), Color(0.015, 0.025, 0.05, alpha * 0.85))
+	var title := "进入无尽模式"
+	var subtitle := "游戏未完全完善，敬请期待"
+	var title_size := mini(38, int(width / 7.0))
+	var sub_size := mini(23, int(width / 14.0))
+	for line in [[title, title_size, -3.0], [subtitle, sub_size, 32.0]]:
+		var text_size := _font.get_string_size(line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, line[1])
+		var at := center + Vector2(-text_size.x * 0.5, line[2])
+		draw_string_outline(_font, at, line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, line[1], 5, Color(0, 0, 0, alpha))
+		draw_string(_font, at, line[0], HORIZONTAL_ALIGNMENT_LEFT, -1, line[1], Color(0.65, 0.88, 1.0, alpha))
+
+
+func _draw_experience_bar() -> void:
+	const HEIGHT := 6.0
+	var required := maxi(1, RunState._xp_threshold(RunState.level))
+	var progress := clampf(float(RunState.xp) / float(required), 0.0, 1.0)
+	var y := size.y - HEIGHT
+	draw_rect(Rect2(0.0, y, size.x, HEIGHT), Color(0.025, 0.065, 0.14, 0.95))
+	if progress > 0.0:
+		var width := size.x * progress
+		draw_rect(Rect2(0.0, y, width, HEIGHT), Color(0.15, 0.48, 1.0))
+		draw_rect(Rect2(0.0, y, width, 1.0), Color(0.44, 0.76, 1.0))
 
 
 ## F3：显示帧时间与对象数量，方便确认卡顿是否来自逻辑/物理尖峰。
@@ -212,7 +258,7 @@ func _on_switch_failed() -> void:
 func _draw_health() -> void:
 	var max_hp := maxf(0.5, _max_hp)
 	var hearts := maxi(1, int(ceil(max_hp)))
-	var shields := maxi(0, Skills.guardian_shields)
+	var shields := maxi(0, Skills.displayed_shields())
 	var numeric := hearts + shields > HEALTH_ICON_LIMIT
 	var low_health := _hp > 0.0 and _hp / max_hp <= 0.3
 	var pulse := 1.0
@@ -255,7 +301,7 @@ func _health_icon_center(index: int) -> Vector2:
 
 
 func _health_extra_height() -> float:
-	var count := maxi(1, int(ceil(maxf(0.5, _max_hp)))) + maxi(0, Skills.guardian_shields)
+	var count := maxi(1, int(ceil(maxf(0.5, _max_hp)))) + maxi(0, Skills.displayed_shields())
 	if count > HEALTH_ICON_LIMIT:
 		return 0.0
 	return HEALTH_ROW_SPACING * float((count - 1) / HEALTH_ICONS_PER_ROW)
@@ -288,10 +334,14 @@ func _draw_guardian_icon(center: Vector2) -> void:
 		center + Vector2(8, 2), center + Vector2(0, 9),
 		center + Vector2(-8, 2), center + Vector2(-9, -7),
 	])
-	draw_colored_polygon(shield, Color(0.48, 0.8, 1.15, 0.5))
+	var demonic := Skills.has_lucifer()
+	draw_colored_polygon(shield, Color(0.18, 0.01, 0.025, 0.95) if demonic else Color(0.48, 0.8, 1.15, 0.5))
 	var outline := shield.duplicate()
 	outline.append(shield[0])
-	draw_polyline(outline, Color(0.78, 1.0, 1.5, 0.95), 1.5, true)
+	draw_polyline(outline, Color(1.7, 0.05, 0.14, 0.95) if demonic else Color(0.78, 1.0, 1.5, 0.95), 1.5, true)
+	if demonic:
+		draw_polyline(PackedVector2Array([center + Vector2(-7, -6), center + Vector2(-10, -13), center + Vector2(-3, -9)]), Color(1.7, 0.05, 0.14), 1.5, true)
+		draw_polyline(PackedVector2Array([center + Vector2(7, -6), center + Vector2(10, -13), center + Vector2(3, -9)]), Color(1.7, 0.05, 0.14), 1.5, true)
 
 
 ## 0.5 → "0.5"；整数不显示小数尾巴。

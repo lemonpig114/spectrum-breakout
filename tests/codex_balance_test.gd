@@ -12,10 +12,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	var panel: Control = screen._codex_panel
 	check(panel.visible, "codex opens")
-	check(panel.entries.size() == 137, "76 skills + 52 relics + 6 enemies + 3 guides")
+	check(panel.entries.size() == 145, "80 skills + 55 relics + 7 enemies + 3 guides")
 	for i in 4:
 		panel.set_category(i)
-		check(panel.filtered.size() == [76, 52, 6, 3][i], "category count")
+		check(panel.filtered.size() == [80, 55, 7, 3][i], "category count")
 		for j in panel.filtered.size():
 			panel.show_entry(j)
 			check(not panel.detail.text.is_empty(), "detail content")
@@ -34,7 +34,7 @@ func _ready() -> void:
 	check(is_equal_approx(Director.health_multiplier(59), 1.0) and is_equal_approx(Director.health_multiplier(60), 1.5), "first-minute hp")
 	check(is_equal_approx(Director.health_multiplier(120), 2.0), "third phase hp")
 	check(is_equal_approx(Director.health_multiplier(240), 3.5), "plane phase hp")
-	check(is_equal_approx(Director.health_multiplier(600), 6.0), "post-schedule 6x hp")
+	check(is_equal_approx(Director.health_multiplier(600), 35.0), "endless base hp")
 	check(Director.enemy_damage_multiplier(239.9) == 1.0, "half-heart contact before 240")
 	check(Director.enemy_damage_multiplier(240) == 2.0, "full-heart contact after 240")
 	var stats := StatBlock.new()
@@ -66,7 +66,7 @@ func _ready() -> void:
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	check(enemies.size() == 4, "both spawning paths")
 	for enemy in enemies:
-		check(is_equal_approx(enemy.health, enemy.type_data.max_health * 6.0), "spawn hp scaling")
+		check(is_equal_approx(enemy.health, enemy.type_data.max_health * Director.health_multiplier(600.0)), "spawn hp scaling")
 	check(kind.max_health == base, "shared resource unchanged")
 	RunState.elapsed = 0
 	world.queue_free()

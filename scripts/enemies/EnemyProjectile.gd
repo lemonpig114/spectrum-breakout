@@ -9,6 +9,8 @@ var target: Node2D
 var tint := Color.WHITE
 var color_index := -1
 var _lifetime := 2.2
+var orbiting := false
+var orbit_hit := false
 
 
 func configure(origin: Vector2, aim: Vector2, player_target: Node2D, color: Color,

@@ -16,6 +16,27 @@ const DEFAULT_VOLUME := 0.8
 
 ## 冷却用于抑制霰弹/连射/成群击杀造成的同帧叠音；jitter 让重复音不机械。
 const SOUND_DEFS: Dictionary = {
+	&"weapon_basic": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_basic": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_sword": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_sword": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_scythe": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_scythe": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_wave": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_wave": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_boomerang": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_boomerang": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_sprite": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_sprite": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_star": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_star": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_lightning": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_lightning": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_cannon": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_cannon": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+	&"weapon_black_hole": {"cooldown": 100, "jitter": 0.03, "db": -7.0},
+	&"weapon_hit_black_hole": {"cooldown": 85, "jitter": 0.04, "db": -10.0},
+
 	&"shoot": {"cooldown": 40, "jitter": 0.05, "db": -4.0},
 	&"shoot_heavy": {"cooldown": 120, "jitter": 0.02, "db": -1.0},
 	&"hit": {"cooldown": 40, "jitter": 0.10, "db": -8.0},
@@ -210,6 +231,46 @@ func _take_voice() -> AudioStreamPlayer:
 
 func _synth(id: StringName) -> AudioStreamWAV:
 	match id:
+		&"weapon_basic":
+			return _tone(0.06, 430.0, 210.0, 0.18, 0.015, 0.03, 0.0)
+		&"weapon_hit_basic":
+			return _tone(0.07, 168.0, 84.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_sword":
+			return _tone(0.2, 900.0, 220.0, 0.22, 0.015, 0.92, 0.0)
+		&"weapon_hit_sword":
+			return _tone(0.07, 176.0, 88.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_scythe":
+			return _tone(0.42, 440.0, 100.0, 0.25, 0.015, 0.96, 0.0)
+		&"weapon_hit_scythe":
+			return _tone(0.07, 80.0, 40.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_wave":
+			return _tone(0.25, 680.0, 240.0, 0.17, 0.015, 0.85, 0.0)
+		&"weapon_hit_wave":
+			return _tone(0.07, 192.0, 96.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_boomerang":
+			return _tone(0.16, 350.0, 760.0, 0.16, 0.015, 0.66, 0.0)
+		&"weapon_hit_boomerang":
+			return _tone(0.07, 608.0, 304.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_sprite":
+			return _tone(0.1, 1200.0, 680.0, 0.14, 0.015, 0.28, 0.0)
+		&"weapon_hit_sprite":
+			return _tone(0.07, 544.0, 272.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_star":
+			return _tone(0.1, 1600.0, 1000.0, 0.14, 0.015, 0.15, 0.0)
+		&"weapon_hit_star":
+			return _tone(0.07, 800.0, 400.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_lightning":
+			return _tone(0.1, 2500.0, 500.0, 0.17, 0.015, 0.84, 0.0)
+		&"weapon_hit_lightning":
+			return _tone(0.07, 400.0, 200.0, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_cannon":
+			return _tone(0.2, 130.0, 48.0, 0.32, 0.015, 0.42, 0.0)
+		&"weapon_hit_cannon":
+			return _tone(0.07, 38.400000000000006, 19.200000000000003, 0.16, 0.004, 0.65, 0.0)
+		&"weapon_black_hole":
+			return _tone(0.3, 100.0, 55.0, 0.19, 0.015, 0.15, 0.0)
+		&"weapon_hit_black_hole":
+			return _tone(0.07, 44.0, 22.0, 0.16, 0.004, 0.65, 0.0)
 		&"shoot":
 			return _tone(0.075, 920.0, 360.0, 0.26, 0.003, 0.06, 0.30)
 		&"shoot_heavy":

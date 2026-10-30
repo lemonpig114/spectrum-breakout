@@ -4,11 +4,11 @@ extends Control
 signal finished
 
 var _player: Player
-var _stage := &""
 var _choices: Array[StringName] = []
 var _title: Label
 var _hint: Label
 var _cards: VBoxContainer
+var _scroll: ScrollContainer
 var _box: PanelContainer
 
 
@@ -50,9 +50,12 @@ func _ready() -> void:
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.add_theme_font_size_override("font_size", 13)
 	column.add_child(_hint)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(_scroll)
 	_cards = VBoxContainer.new()
 	_cards.add_theme_constant_override("separation", 8)
-	column.add_child(_cards)
+	_scroll.add_child(_cards)
 
 
 func open_reward(player_node: Player, source: String) -> bool:
@@ -70,25 +73,20 @@ func open_reward(player_node: Player, source: String) -> bool:
 		_choices[i] = _choices[j]
 		_choices[j] = swap
 	_choices.resize(mini(3, _choices.size()))
-	_stage = &"acquire"
 	_title.text = "选择武器"
-	_hint.text = "%s · 首件替换基础弹，后续融合机制" % source
+	_hint.text = "%s · 自动决定攻击形态，后续融合机制" % source
 	_rebuild_cards()
 	visible = true
 	return true
 
 
-func open_primary_choice(player_node: Player, source: String) -> bool:
+func restore_reward(player_node: Player, choices: Array) -> void:
 	_player = player_node
-	_choices = _player.weapon.owned_forms.duplicate()
-	if _choices.is_empty():
-		return false
-	_stage = &"primary"
-	_title.text = "选择主形态"
-	_hint.text = "%s · 主形态决定攻击动作与倍率" % source
+	_choices.assign(choices)
+	_title.text = "选择武器"
+	_hint.text = "继续未完成的武器选择"
 	_rebuild_cards()
 	visible = true
-	return true
 
 
 func _rebuild_cards() -> void:
@@ -110,42 +108,51 @@ func _rebuild_cards() -> void:
 			card_style.set_corner_radius_all(5)
 			button.add_theme_stylebox_override(state, card_style)
 		button.text = "%d  %s  ·  %s\n%s" % [i + 1, data.display_name, data.brief,
-			("主形态：" + data.description) if _stage == &"acquire" else _preview(id)]
+			_reward_preview(id)]
 		button.pressed.connect(_choose.bind(i))
 		_cards.add_child(button)
-	_box.position = (size - Vector2(470, 85 + _choices.size() * 78)) * 0.5
+	_scroll.custom_minimum_size = Vector2(420, minf(510.0, float(_choices.size() * 78)))
+	_box.position = (size - Vector2(470, 85 + _scroll.custom_minimum_size.y)) * 0.5
 
 
-func _preview(id: StringName) -> String:
-	var data := ContentDB.get_data(id) as WeaponTraitResource
-	var others := PackedStringArray()
-	for owned in _player.weapon.owned_forms:
-		if owned != id:
-			var other := ContentDB.get_data(owned) as WeaponTraitResource
-			if other != null:
-				others.append(other.brief)
-	return "主：%s  ·  融合：%s" % [data.brief, "、".join(others)]
+func _reward_preview(id: StringName) -> String:
+	var owned := _player.weapon.owned_forms.duplicate()
+	owned.append(id)
+	var primary: StringName = id
+	for candidate in WeaponRuntime.PRIMARY_ORDER:
+		if owned.has(candidate):
+			primary = candidate
+			break
+	if owned.has(&"sword") and owned.has(&"scythe"):
+		var extras := PackedStringArray()
+		if owned.has(&"boomerang"):
+			extras.append("回扫与剑气折返")
+		if owned.has(&"cannon"):
+			extras.append("剑气路径连爆")
+		return "镰刀挥扫 → 放大剑气" + (" · " + "、".join(extras) if not extras.is_empty() else "")
+	if primary == &"sword" and owned.has(&"boomerang"):
+		return "剑气推进后折返，两程分别命中，不另发飞刃"
+	if primary == &"sword" and owned.has(&"cannon"):
+		return "剑气推进，沿路径连续爆炸"
+	if primary == &"scythe" and owned.has(&"boomerang"):
+		return "镰刀扫过一圈后反向回扫"
+	if primary == &"star" and owned.has(&"lightning"):
+		return "星弹命中分裂，主弹与星片引出闪电"
+	if primary == &"star" and owned.has(&"boomerang"):
+		return "星弹自身折返，命中仍可分裂，不另发回旋镖"
+	var data := ContentDB.get_data(primary) as WeaponTraitResource
+	return "融合后主形态：%s · %s" % [data.display_name,
+		(ContentDB.get_data(id) as WeaponTraitResource).description]
 
 
 func _choose(index: int) -> void:
 	if index < 0 or index >= _choices.size():
 		return
 	var id := _choices[index]
-	if _stage == &"acquire":
-		if not _player.weapon.acquire_form(id):
-			return
-		Audio.play(&"ui_buy")
-		if _player.weapon.owned_forms.size() > 1:
-			_stage = &"primary"
-			_title.text = "选择主形态"
-			_hint.text = "主形态决定攻击动作与倍率 · 下次融合时可再选择"
-			_choices = _player.weapon.owned_forms.duplicate()
-			_rebuild_cards()
-			return
-	else:
-		_player.weapon.select_primary(id)
+	if not _player.weapon.acquire_form(id):
+		return
+	Audio.play(&"ui_buy")
 	visible = false
-	_stage = &""
 	finished.emit()
 
 

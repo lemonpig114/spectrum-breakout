@@ -94,6 +94,17 @@ func _ready() -> void:
 	for frame in 14:
 		boss._physics_process(0.016)
 	check(boss.scale.is_equal_approx(Vector2.ONE), "boss ignores hit squash so telegraphs stay stable")
+	# Panic push bypasses immunity during a dash without changing its target.
+	boss._begin_action(&"dash")
+	boss._resolve_action()
+	boss._step_dash(boss._dash_duration * 0.2)
+	var locked_after_push := boss._dash_target
+	boss.apply_knockback(boss.global_position - Vector2.RIGHT * 50.0, 1000.0, 0.32, true)
+	boss._physics_process(0.32)
+	var pushed_at := boss.global_position
+	boss._physics_process(0.001)
+	check(boss._dash_target == locked_after_push and boss.global_position.distance_to(pushed_at) < 20.0,
+		"unresisted hurt push resumes dash without snapping or changing the target")
 	world.queue_free()
 	RunState.end_run()
 	await get_tree().process_frame

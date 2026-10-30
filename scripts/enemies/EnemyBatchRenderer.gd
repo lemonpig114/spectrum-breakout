@@ -5,6 +5,7 @@ extends Node2D
 const CAPACITY := 256
 const SHAPES := [3, 4, 6]
 var _batches: Dictionary = {}
+var _writers := {}
 
 
 func _ready() -> void:
@@ -21,6 +22,7 @@ func _ready() -> void:
 		node.multimesh = multi
 		add_child(node)
 		_batches[sides] = multi
+		_writers[sides] = preload("res://scripts/fx/InstanceBatch.gd").new(multi, node)
 
 
 func _process(_delta: float) -> void:
@@ -40,13 +42,13 @@ func _process(_delta: float) -> void:
 		multi.visible_instance_count = enemies.size()
 		for i in enemies.size():
 			var enemy: Enemy = enemies[i]
-			var transform := enemy.global_transform
-			transform.x *= enemy.radius
-			transform.y *= enemy.radius
-			multi.set_instance_transform_2d(i, transform)
+			var transform := Transform2D(enemy._visual_angle, enemy.global_position)
+			transform.x *= enemy.radius * enemy.scale.x * enemy._visual_scale.x
+			transform.y *= enemy.radius * enemy.scale.y * enemy._visual_scale.y
 			var color := RunState.enemy_color_of(enemy.color_index)
-			multi.set_instance_color(i, Color(color.r * enemy.modulate.r,
+			_writers[sides].write(i, transform, Color(color.r * enemy.modulate.r,
 				color.g * enemy.modulate.g, color.b * enemy.modulate.b, enemy.modulate.a))
+		_writers[sides].flush(enemies.size())
 
 
 func _make_mesh(sides: int) -> ArrayMesh:

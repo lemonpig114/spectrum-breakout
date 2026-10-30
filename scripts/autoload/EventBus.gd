@@ -31,6 +31,7 @@ signal level_up(level: int)
 signal run_time_changed(seconds: float)
 signal run_started
 signal run_ended
+signal endless_mode_entered
 
 ## 商人：出现时 HUD 画屏幕外箭头，接触后打开商店。
 signal merchant_spawned(merchant: Node)

@@ -22,13 +22,27 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
   planes, exploding rounds, empowered squares and heavy bullets retain custom draws. Projectile active-list release
   uses swap removal with `active_index`. Benchmark with `tests/_perf_probe.tscn -- --projectiles=300`; use
   `--no-enemy-batch` / `--no-projectile-batch` for visual or performance comparisons.
+- `InstanceBatch.flush()` must queue redraw on its owning `MultiMeshInstance2D` after uploading the buffer:
+  Godot 4.4.1 otherwise keeps stale CanvasItem culling bounds and entire moving batches disappear.
+  Keep this once per batch/rendered frame. GPU pixel regression: `tests/batch_visibility_test.tscn` (requires rendering).
 - Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
-- 19 skill branches × 4 tiers = **76 nodes**, **52 relics**, shop, luck/chests, manual pause, altars, audio.
-- First weapon fusion slice: four forms (sword/lightning/star/boomerang), Boss reward or unique epic relic,
-  player-selected primary form, secondary mechanics only. `WeaponCombat` resolves direct hits and drains a bounded
-  derivative FIFO. Desktop debug builds expose a tilde console (`w`, `primary`, `e`, `boss`, `gold`, `xp`, `clear`, `fps`).
-  See `docs/WEAPONS.md`; Android has no console.
-- Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/character_select.tscn` → `scenes/main.tscn`.
+- 20 skill branches × 4 tiers = **80 nodes**, **55 relics**, shop, luck/chests, manual pause, altars, audio.
+- Two unique iridescent relics: Lucifer requires maxed demon/giant/crit; Michael maxed angel/crit/weak.
+  Highest shop level7 adds rarity4 weight0.005 deducted from rare0.50→0.495. Both shop-only; no side doubling.
+  Lucifer locks HP/maxHP0.5, converts healing to base damage and max hearts to demon shields; shield break kills non-Bosses only.
+  Michael +50pp crit, super-crit executes <60% normal / <30% Boss (explicit HexBoss exception). Save all conversion counters.
+  Relic console `r` accepts Chinese names, IDs, lucifer/michael aliases, Tab completion. Shop prices use common multiplier
+  `1 + floor(elapsed/45)*0.10 + purchases*0.03`; heirloom remains zero. Android camera1.3, desktop1.0; never scale HUD/controls for this.
+- Weapon fusion: eight forms (sword/lightning/star/boomerang/cannon/sprite/wave/scythe), Boss reward or the unique iridescent shop-only heirloom,
+  fixed primary priority, secondary mechanics only; no primary-selection UI or console override. `WeaponCombat` resolves direct hits and drains a bounded
+  derivative FIFO. Desktop debug builds expose a tilde console (`w`, `rw`, `bh`, `e`, `boss`, `gold`, `xp`, `clear`, `fps`).
+  See `docs/WEAPONS.md`; Android has no console. The four newer main-form visuals are drafts pending user review.
+- Startup: `scenes/boot.tscn` (~1.8 s loading) → `scenes/main_menu.tscn`; New Game opens character select,
+  Continue restores the local run directly. Main menu also exposes Settings/Codex/Quit.
+  `GameSave` keeps one versioned run slot at `user://run_save.dat` with a backup; autosaves every 10 seconds,
+  on background/focus loss, window close, return to menu and resolved choices. Death clears both copies.
+  Restore exact StatBlocks and reconnect dynamic modifier references; never replay relic/skill acquisition effects.
+  See `docs/SAVE_GAME.md`. Embedded tests cannot autosave over the user's run; test files use their own slot.
   Selection is stored in `RunState.selected_character_id`; running `main.tscn` directly falls back to `prism`.
 - Three units (`prism`, `bulwark`, `falcon`) share `CharacterResource.BASE_WEAPON_ID = basic_bolt`; their differences
   are only the `damage_multiplier` / `fire_rate_multiplier` / `projectile_size_multiplier` MULTIPLY modifiers
@@ -36,16 +50,21 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
 
 Current rules (round 20 + follow-up):
 
-- Spawns 0–360 s and beyond: 3/4/6/13/6/8/12/6/8 per second. 120–180 s and 300–360 s use surround rings with an
-  independent random color per enemy (no same-color packs); the former has a 100-enemy cap, while the usual cap grows 40→80.
-- HP steps ×0.8 (0–15 s), ×1 (15–60 s), ×1.5 (60 s), ×2 (120 s), ×2.5 (180 s), ×3.5 (240 s), ×5 (270 s), ×6 (300 s). Boss at 180 s:
-  50,000 ×2.5 = 125,000. Plane at 240 s (3 s shots, 340 px preferred); exploding round from 270 s.
+- Spawn timeline is authoritative in `刷怪浓度.md` / `Director.gd`. Rates at 0/30/60/120/180/240/270/300/330/360/420/480 s:
+  3/4/6/13/6/8/12/6/8/10/6/10 per second. Surround rings only 120–180 and 300–330 s; usual cap40→80, former phase100.
+- HP ×0.8 (0–15), ×1 (15–60), ×1.5/2/2.5/3.5/5/6/7/10/15/20 at60/120/180/240/270/300/330/360/420/480 s.
+  Square Boss180s125000HP; HexBoss420s six independent375000HP colored edges, weak-only, neutral/soul5%, death at2edges.
+  Breaking an edge heals survivors and rallies existing hex mobs5s. Morph animation + individual dual-layer textured bars, no Boss name.
+- Endless540s: one-time HUD banner; rotate triangle12/s, square10/s, hex8/s, round10/s, plane8/s every15s.
+  StartHP×20, add5 every30s. Surviving enemies/Bosses retain birth HP. Save preserves announcement flag and HexBoss edges/action/morph.
 - Enemy shape is independent of color: triangle 25 HP / 1 XP, square 60 HP / 1.5 XP, hex 200 HP / 5 XP / 5 gold / 30% armor.
   Contact and ranged damage rise from 0.5 to 1 heart at 240 s.
 - The exploding round has no center dot and sheds sparse movement sparks. Its death blast is the only permitted
   death ring: a wave to the exact 64 px damage radius plus fracture rays. All other deaths are shatter-only.
 - XP: 6/12/20/30 for the first four levels; L5–30 `8 + 6L + round(0.50*(L-5)²)`; from L31 add `10*(L-30) + round(0.70*(L-30)²)`.
-- Luck +12/+12/+16; chest cap 6%, relic conversion 20%; Koi +6 luck / 60 s on chest discovery (refresh only).
+- Luck +12/+12/+16; chest drop 1.2% + 0.01% per luck, cap 3%; resource chest payouts tripled,
+  relic conversion cap 20%; Koi +6 luck / 60 s on chest discovery (refresh only).
+  Unique epic Treasure Watch grants +5 luck and opens/collects lucky chests after 3 seconds.
   Relic rewards queue in the 420 px top strip (5 s auto-take); pending copies reserve uniqueness/stack limits.
 - Damage numbers: elemental/weakness/crit captions combine when multiple tags apply; super crit omits weakness and uses the rainbow gradient. No marker toggle.
 - Performance: 200-enemy basic probe 60 FPS; all-skills immortal ~37–42 FPS; 70-enemy all-skills ~51 FPS.
@@ -62,8 +81,8 @@ Current rules (round 20 + follow-up):
 | `plan.md` | Design (§1–15) + concise current handoff (§16). |
 | `docs/HISTORY.md` | Compact archived details of rounds 1–19 (round 20 lives in HANDOFF). |
 | `docs/AUDIO.md` | 24 sound ids, source mapping, CC0 licenses, replacement convention. |
-| `docs/SKILLS.md` | All 76 implemented skill nodes by branch: prerequisites, effects, runtime mechanics. |
-| `docs/RELICS.md` | All 52 relics by quality/side: base price, tags, effects, acquisition rules. |
+| `docs/SKILLS.md` | All 80 implemented skill nodes by branch: prerequisites, effects, runtime mechanics. |
+| `docs/RELICS.md` | All 55 relics by quality/side: base price, tags, effects, acquisition rules. |
 | `docs/DESIGN_NOTES.md` | Quality names, shop/luck/altar economy, design-vs-implementation deltas. |
 | `人类用.md` | User's active design list; implemented items are marked **[complete]**. Re-read before editing because Claude Code may update it. |
 
@@ -242,7 +261,7 @@ It owns modal routing and `_flush_pending_events()` (merchant first, then altar)
 | `skills_test` | every branch, gating, demon/angel exclusion, caps, heavy charge, dodge/crit, elements, shotgun fan, luck, pickup radius |
 | `autoplay_test` | 30 s random build + combat; unlocks consistent, director still spawning, run unpaused |
 | `menu_test` | 3 characters, selection, boot→select, Main applies character multipliers to `basic_bolt`, game-over retry/menu buttons and pause-menu return signal |
-| `relics_test` | all 52 relics, stacking/unique, apple, blunt blade, heart units, lucky tier, impact releaser synergy |
+| `relics_test` | all 55 relics, stacking/unique, apple, blunt blade, heart units, lucky tier, impact releaser synergy |
 | `pickups_test` | magnet/arrival credit, scatter, merge, chests, clamped steps, radius growth, gold speed, merchant vacuum, streaks, pool caps |
 | `merchant_test` | 1:20 timing, vacuum-before-shop, shelf-clear −10 s (once per visit), one-at-a-time, pause/shop, 4 slots, donation, unique exclusion, buy/reroll/heal/leave, side gating, 14-card layout |
 | `audio_test` | ≥20 sounds, non-empty streams, synth fallbacks, throttle, mute, 20-voice cap, event wiring |

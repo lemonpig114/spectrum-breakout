@@ -44,7 +44,8 @@ func _ready() -> void:
 		_check(reused._veil_material.get_shader_parameter("tint") == Color(2, 0.1, 0.2), "reuse resets the previous color")
 		FX.release_burst(reused)
 		FX.hit_burst(Vector2.ZERO, Color.WHITE, 22, 1, EnergyBurst.STYLE_STAR)
-		_check(not reused._veil.visible and EnergyBurst._active_veils == 0, "star reuse clears the soft layer")
+		_check(EnergyBurst._active_veils == 0 and reused._veil.material == reused._star_material,
+			"star uses the cached GPU geometry without occupying a soft-veil slot")
 	else:
 		_check(false, "reused burst exists")
 	FX.hit_burst(Vector2.ZERO, Color.WHITE, 34, 1, EnergyBurst.STYLE_SHATTER)

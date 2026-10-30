@@ -4,3 +4,8 @@
 .obsidian/
 /build/
 /export_presets.cfg
+/tests/visual_*.png
+/tests/visual_*.png.import
+
+# Local assistant workspace metadata
+.workbuddy/

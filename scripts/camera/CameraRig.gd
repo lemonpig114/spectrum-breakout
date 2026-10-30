@@ -24,6 +24,11 @@ func setup(follow_target: Node2D, arena: Rect2) -> void:
 	limit_right = int(arena.position.x + arena.size.x)
 	limit_bottom = int(arena.position.y + arena.size.y)
 	global_position = follow_target.global_position
+	zoom = Vector2.ONE * gameplay_zoom()
+
+
+func gameplay_zoom() -> float:
+	return 1.3 if GameInput.touch_controls_active else 1.0
 
 
 func _process(delta: float) -> void:
@@ -49,7 +54,7 @@ func add_trauma(amount: float) -> void:
 
 
 func play_intro(start_zoom: float, end_zoom: float, duration: float) -> void:
-	zoom = Vector2(start_zoom, start_zoom)
+	zoom = Vector2.ONE * start_zoom * gameplay_zoom()
 	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "zoom", Vector2(end_zoom, end_zoom), duration)
+	tween.tween_property(self, "zoom", Vector2.ONE * end_zoom * gameplay_zoom(), duration)

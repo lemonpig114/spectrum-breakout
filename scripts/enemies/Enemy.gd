@@ -11,6 +11,7 @@ var health := 10.0
 var radius := 12.0
 var is_dead := false
 var empowered := false
+var _hex_rally_time := 0.0
 var batch_rendered := false
 var _speed_multiplier := 1.0
 
@@ -20,6 +21,7 @@ var _contact_cooldown := 0.0
 var _squash_time := 0.0
 var _knockback_velocity := Vector2.ZERO
 var _knockback_time := 0.0
+var _unresisted_knockback := false
 var _shot_timer := 0.0
 var _movement_accum := 0.0
 ## 分离力每两帧才重算一次；拥挤时邻居平衡会左右翻转，直接使用会原地抽搐。
@@ -35,7 +37,9 @@ var _round_spark_velocities: Array[Vector2] = []
 var _round_spark_lives: Array[float] = []
 
 # 弱点元素状态
-var _burn_stacks: Array[Dictionary] = []
+var _burn_ticks := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
+var _burn_cursor := 0
+var _burn_pending := 0.0
 var _poison_dps := 0.0
 var _dot_bucket := 0
 var _slow := 0.0
@@ -44,6 +48,11 @@ var _slow_time := 0.0
 var _ice_time := 0.0
 var vulnerability := 0.0
 var _vulnerability_applied := false
+var _visual_scale := Vector2.ONE
+var _blackhole_slow := 0.0
+var _blackhole_slow_time := 0.0
+var _water_drag_time := 0.0
+var _water_push := Vector2.ZERO
 
 @onready var _shape: CollisionShape2D = $CollisionShape2D
 var _healthbar: EnemyHealthBar
@@ -81,14 +90,14 @@ func _ready() -> void:
 	_healthbar = EnemyHealthBar.new()
 	add_child(_healthbar)
 	_healthbar.refresh(health, max_health, radius, RunState.enemy_color_of(color_index))
-	rotation = _visual_angle
-	_healthbar.rotation = -_visual_angle
+	rotation = 0.0 if batch_rendered else _visual_angle
+	_healthbar.rotation = 0.0 if batch_rendered else -_visual_angle
 	if type_data != null and type_data.behavior == &"ranged":
 		_shot_timer = type_data.shot_interval * randf_range(0.45, 0.8)
 	if type_data != null and type_data.behavior == &"explode":
 		_round_spark_timer = randf_range(0.0, 0.18)
 	_apply_shape()
-	queue_redraw()
+	_request_redraw()
 
 
 func _apply_shape() -> void:
@@ -125,6 +134,18 @@ func _rebuild_polygon() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	_simulate_enemy(delta)
+	preload("res://scripts/game/CombatProfiler.gd").end(&"enemy_ai", clock)
+
+
+func _simulate_enemy(delta: float) -> void:
+	_hex_rally_time = maxf(0.0, _hex_rally_time - delta)
+	_blackhole_slow_time = maxf(0.0, _blackhole_slow_time - delta)
+	if _blackhole_slow_time <= 0.0:
+		_blackhole_slow = 0.0
+	_water_drag_time = maxf(0.0, _water_drag_time - delta)
+	_water_push = _water_push.move_toward(Vector2.ZERO, 48.0 * delta)
 	if is_dead or RunState.is_dead:
 		return
 
@@ -135,8 +156,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		_visual_angle += delta * 0.7
 	# 旋转交给节点 transform：不重建 _draw 命令，70 个敌人同屏也不会每帧重绘。
-	rotation = _visual_angle
-	_healthbar.rotation = -_visual_angle
+	if not batch_rendered:
+		rotation = _visual_angle
+		_healthbar.rotation = -_visual_angle
 
 	# 受击闪白用 modulate 表现：只更新节点颜色，不需要重建 _draw 命令。
 	# 溅射一次命中 70 个敌人时，这比每帧重绘整个敌人便宜得多。
@@ -164,7 +186,7 @@ func _physics_process(delta: float) -> void:
 	if _knockback_time > 0.0:
 		_knockback_time = maxf(0.0, _knockback_time - delta)
 		velocity = _knockback_velocity
-		_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 1900.0 * delta)
+		_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 1900.0 * (1.0 if _unresisted_knockback else displacement_multiplier()) * delta)
 		_move_manually(delta)
 		if type_data != null and type_data.behavior == &"explode":
 			_update_round_sparks(delta)
@@ -179,7 +201,9 @@ func _physics_process(delta: float) -> void:
 		target_radius = (target as Player).body_radius
 	var contact_range := radius + target_radius + 2.0
 
-	var move_speed := type_data.move_speed * _speed_multiplier * (1.0 - maxf(_slow, 0.15 if circle_slow else 0.0))
+	var move_speed := type_data.move_speed * _speed_multiplier * (1.0 - maxf(_blackhole_slow, maxf(_slow, 0.15 if circle_slow else 0.0))) * (0.75 if _water_drag_time > 0.0 else 1.0)
+	if _hex_rally_time > 0.0:
+		move_speed *= 1.6
 	var to_target := target.global_position - global_position
 	var distance := to_target.length()
 	# 追逐 + 邻近分离。空间网格只找九格邻居，不启用敌人间的物理碰撞。
@@ -198,7 +222,7 @@ func _physics_process(delta: float) -> void:
 		# 敌人在原地高速来回抽动。低通后方向变化分摊到数帧，仍保留持续斥力。
 		_separation_smoothed = _separation_smoothed.lerp(EnemyFlock.separation(self), 0.3)
 		steering += _separation_smoothed
-	velocity = steering.limit_length(1.12) * move_speed
+	velocity = steering.limit_length(1.12) * move_speed + _water_push
 	_move_manually(delta)
 	if type_data.behavior == &"explode":
 		_update_round_sparks(delta)
@@ -215,7 +239,7 @@ func _physics_process(delta: float) -> void:
 			return
 		if target.has_method("take_damage"):
 			# 减速同时延长敌人的接触攻击间隔。
-			_contact_cooldown = 0.8 * (1.0 + maxf(_slow, 0.15 if circle_slow else 0.0))
+			_contact_cooldown = 0.8 * (1.0 + maxf(_blackhole_slow, maxf(_slow, 0.15 if circle_slow else 0.0)))
 			target.take_damage(type_data.contact_damage * Director.enemy_damage_multiplier(), self)
 
 
@@ -241,7 +265,7 @@ func _update_round_sparks(delta: float) -> void:
 		_round_spark_lives.append(0.28)
 		changed = true
 	if changed:
-		queue_redraw()
+		_request_redraw()
 
 
 func _fire_ranged() -> void:
@@ -260,6 +284,27 @@ func _move_manually(delta: float) -> void:
 	global_position += velocity * delta
 	if EnemyFlock.enabled:
 		global_position += EnemyFlock.correction(self)
+	_prevent_target_overlap()
+
+
+func apply_gravity_displacement(offset: Vector2) -> void:
+	if is_dead or displacement_multiplier() <= 0.0:
+		return
+	global_position += offset * displacement_multiplier()
+	_prevent_target_overlap()
+
+
+## Forced motion shares one resistance rule; ordinary walking/dashing is unaffected.
+func displacement_multiplier() -> float:
+	if type_data != null:
+		if type_data.is_boss:
+			return 0.0
+		if type_data.id == &"chaser_hex":
+			return 0.6
+	return 1.0
+
+
+func _prevent_target_overlap() -> void:
 	if target != null and is_instance_valid(target):
 		var offset := global_position - target.global_position
 		var stop_distance := radius + (target as Player).body_radius + 2.0 if target is Player else radius + Player.RADIUS + 2.0
@@ -267,8 +312,19 @@ func _move_manually(delta: float) -> void:
 			global_position = target.global_position + (offset.normalized() if not offset.is_zero_approx() else Vector2.RIGHT) * stop_distance
 
 
+func damage_color_at(_point: Vector2) -> int:
+	return color_index
+
+
 func take_damage(context: DamageContext) -> void:
-	if is_dead:
+	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	_take_damage_impl(context)
+	Skills.try_michael_execution(context)
+	preload("res://scripts/game/CombatProfiler.gd").end(&"enemy_damage", clock)
+
+
+func _take_damage_impl(context: DamageContext) -> void:
+	if is_dead or _hex_rally_time > 0.0:
 		return
 
 	var original_amount := context.amount
@@ -287,9 +343,11 @@ func take_damage(context: DamageContext) -> void:
 		_squash()
 	_refresh_healthbar()
 
-	var hit_color := RunState.color_of(context.color_index)
+	var hit_color := Color(0.88, 0.88, 0.88) if context.color_index < 0 else RunState.color_of(context.color_index)
 	var style := FloatingTextLayer.STYLE_NORMAL
-	if context.has_tag(&"super_crit"):
+	if context.has_tag(&"blackhole_explosion"):
+		style = FloatingTextLayer.STYLE_BURST
+	elif context.has_tag(&"super_crit"):
 		style = FloatingTextLayer.STYLE_SUPER_CRIT
 	elif context.is_crit:
 		style = FloatingTextLayer.STYLE_CRIT
@@ -354,7 +412,7 @@ func missing_health_ratio() -> float:
 
 ## 真实伤害：无视颜色克制与减伤，用于灵魂线。
 func take_true_damage(amount: float, source_key: StringName = &"skill:soul_1") -> void:
-	if is_dead:
+	if is_dead or _hex_rally_time > 0.0:
 		return
 
 	_apply_vulnerability_for_attack(false)
@@ -379,7 +437,9 @@ func take_true_damage(amount: float, source_key: StringName = &"skill:soul_1") -
 func apply_burn(total_damage: float) -> void:
 	if is_dead or total_damage <= 0.0:
 		return
-	_burn_stacks.append({"total": total_damage, "ticks": 4})
+	for step in 4:
+		_burn_ticks[(_burn_cursor + step) % 4] += total_damage * 0.25
+	_burn_pending += total_damage
 	_refresh_status_icons()
 
 
@@ -397,6 +457,19 @@ func apply_slow(amount: float, duration: float) -> void:
 	_slow_time = maxf(_slow_time, duration)
 
 
+func apply_blackhole_slow(amount: float, duration: float) -> void:
+	_blackhole_slow = maxf(_blackhole_slow, amount)
+	_blackhole_slow_time = maxf(_blackhole_slow_time, duration)
+
+
+func apply_water_push(direction: Vector2) -> void:
+	var strength := displacement_multiplier()
+	if is_dead or strength <= 0.0:
+		return
+	_water_push = (_water_push + direction.normalized() * 24.0 * strength).limit_length(36.0 * strength)
+	_water_drag_time = maxf(_water_drag_time, 0.45)
+
+
 func apply_ice(duration: float) -> void:
 	if is_dead:
 		return
@@ -410,7 +483,8 @@ func has_ice() -> bool:
 
 func _refresh_status_icons() -> void:
 	if _healthbar != null:
-		_healthbar.set_statuses(not _burn_stacks.is_empty(), _poison_dps > 0.0, _ice_time > 0.0, vulnerability > 0.0)
+		_healthbar.set_statuses(_burn_pending > 0.000001, _poison_dps > 0.0,
+			_ice_time > 0.0, vulnerability > 0.0)
 
 
 func _apply_vulnerability_for_attack(add_stack: bool = true) -> void:
@@ -443,6 +517,10 @@ func execute() -> void:
 	force_kill()
 
 
+func can_be_executed() -> bool:
+	return true
+
+
 func _tick_statuses(delta: float) -> void:
 	var visuals_changed := false
 	if vulnerability > 0.0:
@@ -465,21 +543,21 @@ func _tick_statuses(delta: float) -> void:
 
 
 func _on_global_dot_tick(bucket: int) -> void:
-	if bucket == _dot_bucket and not is_dead and (not _burn_stacks.is_empty() or _poison_dps > 0.0):
+	if bucket == _dot_bucket and not is_dead and (_burn_pending > 0.000001 or _poison_dps > 0.0):
 		_apply_dot_tick()
 
 
 ## 灼伤在两秒内每半秒结算一次；中毒每半秒结算半秒的伤害。
 func _apply_dot_tick() -> void:
-	var burn_damage := 0.0
-	for i in range(_burn_stacks.size() - 1, -1, -1):
-		var stack: Dictionary = _burn_stacks[i]
-		burn_damage += float(stack.get("total", 0.0)) * 0.25
-		stack["ticks"] = int(stack.get("ticks", 1)) - 1
-		if int(stack["ticks"]) <= 0:
-			_burn_stacks.remove_at(i)
+	var burn_damage := _burn_ticks[_burn_cursor]
+	_burn_ticks[_burn_cursor] = 0.0
+	_burn_cursor = (_burn_cursor + 1) % 4
+	_burn_pending = maxf(0.0, _burn_pending - burn_damage)
 
 	var poison_damage := _poison_dps * 0.5
+	if _hex_rally_time > 0.0:
+		burn_damage = 0.0
+		poison_damage = 0.0
 	var vulnerable_multiplier := 1.0 + vulnerability
 	burn_damage *= vulnerable_multiplier * armor_multiplier()
 	poison_damage *= vulnerable_multiplier * armor_multiplier()
@@ -511,33 +589,64 @@ func _show_elemental_tick(amount: float, tint: Color, style: int, kind: StringNa
 	)
 
 ## 被击退。strength 越大冲得越远，期间不追人、不造成接触伤害。
-func apply_knockback(origin: Vector2, strength: float, duration: float = 0.32) -> void:
-	if is_dead:
+func apply_knockback(origin: Vector2, strength: float, duration: float = 0.32, ignore_resistance: bool = false) -> void:
+	if is_dead or (not ignore_resistance and displacement_multiplier() <= 0.0):
 		return
 
 	var direction := global_position - origin
 	if direction.length_squared() < 0.001:
 		direction = Vector2.RIGHT.rotated(randf() * TAU)
 
-	_knockback_velocity = direction.normalized() * strength
+	_unresisted_knockback = ignore_resistance
+	_knockback_velocity = direction.normalized() * strength * (1.0 if ignore_resistance else displacement_multiplier())
 	_knockback_time = duration
 	_flash = maxf(_flash, 0.8)
 	_squash()
-	queue_redraw()
+	_request_redraw()
+
+
+## Boss uses its own AI loop; the hurt shockwave is the sole unresisted push.
+func step_unresisted_knockback(delta: float) -> bool:
+	if not _unresisted_knockback or _knockback_time <= 0.0:
+		_unresisted_knockback = false
+		return false
+	var step := minf(delta, _knockback_time)
+	_knockback_time = maxf(0.0, _knockback_time - delta)
+	global_position += _knockback_velocity * step
+	_knockback_velocity = _knockback_velocity.move_toward(Vector2.ZERO, 1900.0 * step)
+	return true
 
 
 ## 强制击杀：受伤反击用，奖励与正常击杀一致。
+func kill_by_relic(source_key: StringName, allow_boss := false, ignore_invulnerability := false) -> bool:
+	if is_dead or (not ignore_invulnerability and _hex_rally_time > 0.0):
+		return false
+	if type_data != null and type_data.is_boss and not allow_boss:
+		return false
+	Skills.record_damage(source_key, health)
+	health = 0.0
+	_die()
+	return true
+
+
 func force_kill() -> void:
-	if is_dead:
+	if is_dead or _hex_rally_time > 0.0:
 		return
 	health = 0.0
 	_die()
 
 
+func rally_hex(duration: float = 5.0) -> void:
+	if not is_dead and type_data != null and type_data.id == &"chaser_hex":
+		_hex_rally_time = maxf(_hex_rally_time, duration)
+
+
 func _squash() -> void:
 	# 用每帧衰减代替 Tween：高攻速下不会再为每次命中创建一个 Tween 对象。
 	_squash_time = 0.16
-	scale = Vector2(1.28, 0.78)
+	_visual_scale = Vector2(1.28, 0.78)
+	if not batch_rendered:
+		scale = _visual_scale
 
 
 func _refresh_healthbar() -> void:
@@ -557,7 +666,7 @@ func empower(boss_color: int) -> void:
 	color_index = boss_color
 	health = max_health
 	_refresh_healthbar()
-	queue_redraw()
+	_request_redraw()
 
 
 func _update_squash(delta: float) -> void:
@@ -566,7 +675,9 @@ func _update_squash(delta: float) -> void:
 	_squash_time = maxf(0.0, _squash_time - delta)
 	var ease := _squash_time / 0.16
 	ease *= ease
-	scale = Vector2(1.0 + 0.28 * ease, 1.0 - 0.22 * ease)
+	_visual_scale = Vector2(1.0 + 0.28 * ease, 1.0 - 0.22 * ease)
+	if not batch_rendered:
+		scale = _visual_scale
 
 
 ## 掉落散点：以尸体为中心随机偏 9–26px；限制在场内，避免掉出边界。
@@ -662,3 +773,12 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
 	if type_data.behavior != &"explode":
 		draw_circle(Vector2.ZERO, 2.5, Color(c.r, c.g, c.b, 0.9))
+
+
+func _request_redraw() -> void:
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+	set_process(false)

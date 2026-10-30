@@ -64,12 +64,12 @@ func _ready() -> void:
 		and not Skills.grant_relic(&"epic_vip_card"),
 		"buying VIP immediately expands the shelf and adds two rerolls")
 	panel.close()
-	Skills.shop_level = 9
-	_check(Skills.shop_slots() == 14 and Skills.can_upgrade_shop(),
+	Skills.shop_level = 6
+	_check(Skills.shop_slots() == 11 and Skills.can_upgrade_shop(),
 		"VIP slot does not consume the last paid shop upgrade")
-	Skills.shop_level = 10
-	_check(Skills.shop_slots() == 15 and not Skills.can_upgrade_shop(),
-		"VIP keeps an extra slot above the ordinary fourteen-slot cap")
+	Skills.shop_level = 7
+	_check(Skills.shop_slots() == 12 and not Skills.can_upgrade_shop(),
+		"VIP keeps an extra slot above the ordinary eleven-slot cap")
 	Skills.shop_level = 0
 	_check(Skills.grant_relic(&"epic_water_candle")
 		and is_equal_approx(Director.spawn_rate(0.0), 3.6),

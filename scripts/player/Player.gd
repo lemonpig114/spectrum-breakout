@@ -12,8 +12,8 @@ const DRAG_HOLD_MS := 140
 const DRAG_DISTANCE := 18.0
 const MANUAL_AIM_WINDOW := 0.5
 const AUTO_AIM_RANGE := 620.0
-const PANIC_KILL_RADIUS := 84.0
-const PANIC_PUSH_RADIUS := 280.0
+const PANIC_KILL_RADIUS := 120.0
+const PANIC_PUSH_RADIUS := 340.0
 ## 三弹以上展开固定扇面再叠随机偏差；双弹改为平行双枪口。
 const SHOTGUN_BASE_FAN_DEG := 18.0
 const SHOTGUN_FAN_PER_PELLET_DEG := 5.0
@@ -396,7 +396,12 @@ func _find_nearest_enemy() -> Node2D:
 	var half_view := get_viewport_rect().size * 0.5 / camera.zoom
 	var visible_rect := Rect2(camera.get_screen_center_position() - half_view, half_view * 2.0)
 
-	for enemy in get_tree().get_nodes_in_group("enemies"):
+	var candidates := get_tree().get_nodes_in_group("enemies")
+	if weapon.primary_form not in [&"sword", &"scythe", &"wave", &"lightning"]:
+		for node in get_tree().get_nodes_in_group(&"friendly_aim_targets"):
+			if node.can_be_targeted():
+				candidates.append(node)
+	for enemy in candidates:
 		if not is_instance_valid(enemy):
 			continue
 		if enemy is Enemy and enemy.is_dead:
@@ -497,7 +502,10 @@ func _fire(shoot_direction: Vector2) -> void:
 			_heavy_timer = 5.0
 			_fire_cooldown = cooldown * 2.0
 			return
-	Audio.play(&"shoot_heavy" if heavy else &"shoot")
+	var sound_form := weapon.primary_form if weapon.primary_form != &"" else &"basic"
+	if weapon.has_form(&"sword") and weapon.has_form(&"scythe"):
+		sound_form = &"scythe"
+	Audio.play((&"shoot_heavy" if heavy else &"shoot") if sound_form == &"basic" else StringName("weapon_%s" % String(sound_form)))
 
 	var pellet_offsets := _pellet_offsets(count, spread)
 	for i in count:
@@ -509,6 +517,20 @@ func _fire(shoot_direction: Vector2) -> void:
 			origin += shot_direction.orthogonal() * half_gap * (1.0 if i == 0 else -1.0)
 		projectile_manager.combat.fire_weapon(origin, shot_direction, weapon_stats,
 			color_index, heavy, weapon)
+	# One roll per trigger; extra attacks enter the FIFO and cannot roll recursively.
+	var innate_rate := weapon.core.fire_rate * _fire_rate_scale if weapon.core != null else 3.0
+	if primary_data != null:
+		innate_rate *= primary_data.fire_rate_scale
+	var extra := Skills.roll_fire_extra_shots(rate / maxf(0.01, innate_rate) - 1.0)
+	var extra_side := -1.0 if extra > 0 and RunState.rng.randf() < 0.5 else 1.0
+	for i in extra:
+		var angle := RunState.rng.randf_range(deg_to_rad(25.0), deg_to_rad(55.0))
+		angle *= extra_side if i % 2 == 0 else -extra_side
+		var direction := base_direction.rotated(angle).normalized()
+		projectile_manager.combat.enqueue({"kind": &"extra_shot",
+			"origin": global_position + direction * (body_radius + 14.0),
+			"direction": direction, "color": color_index, "heavy": heavy,
+			"weapon": weapon}, false)
 
 	# 子弹壳：普通射击后有概率立刻连射，下一次间隔压到射速上限对应的间隔。
 	if not heavy and Skills.roll_chain_fire():
@@ -525,6 +547,9 @@ func _fire(shoot_direction: Vector2) -> void:
 
 func take_damage(amount: float, _source: Node = null) -> void:
 	if _invuln > 0.0 or RunState.is_dead:
+		return
+	if Skills.try_demon_shield():
+		queue_redraw()
 		return
 	if Skills.try_color_shield(_source):
 		_invuln = 0.2
@@ -573,11 +598,12 @@ func _panic_shockwave() -> void:
 			continue
 
 		var distance := global_position.distance_to(enemy.global_position)
-		if distance <= PANIC_KILL_RADIUS:
+		var is_boss := enemy.type_data != null and enemy.type_data.is_boss
+		if distance <= PANIC_KILL_RADIUS and not is_boss:
 			enemy.force_kill()
 		elif distance <= PANIC_PUSH_RADIUS:
-			var falloff := 1.0 - (distance - PANIC_KILL_RADIUS) / maxf(1.0, PANIC_PUSH_RADIUS - PANIC_KILL_RADIUS)
-			enemy.apply_knockback(global_position, lerpf(320.0, 1080.0, falloff))
+			var falloff := clampf(1.0 - (distance - PANIC_KILL_RADIUS) / maxf(1.0, PANIC_PUSH_RADIUS - PANIC_KILL_RADIUS), 0.0, 1.0)
+			enemy.apply_knockback(global_position, lerpf(320.0, 1080.0, falloff), 0.32, is_boss)
 
 
 ## 技能树/遗物统一入口。PLAYER 侧的 max_health 变化会同步当前生命。
@@ -589,7 +615,7 @@ func apply_stat_modifier(modifier: StatModifierResource) -> void:
 		StatModifierResource.Target.PLAYER:
 			var previous_max := max_health
 			stats.add_modifier(modifier)
-			max_health = snap_to_half(stats.get_value(&"max_health"))
+			max_health = Skills.lucifer_max_health(snap_to_half(stats.get_value(&"max_health")))
 			if max_health > previous_max:
 				health = minf(max_health, health + (max_health - previous_max))
 			else:
@@ -605,7 +631,7 @@ func apply_stat_modifier(modifier: StatModifierResource) -> void:
 func remove_modifiers_from(source: StringName) -> void:
 	stats.remove_modifiers_from(source)
 	weapon.stats.remove_modifiers_from(source)
-	max_health = snap_to_half(stats.get_value(&"max_health"))
+	max_health = Skills.lucifer_max_health(snap_to_half(stats.get_value(&"max_health")))
 	health = minf(health, max_health)
 	EventBus.player_health_changed.emit(health, max_health)
 	refresh_body()
@@ -617,7 +643,7 @@ func get_bullet_damage() -> float:
 
 func refresh_derived() -> void:
 	refresh_body()
-	max_health = snap_to_half(stats.get_value(&"max_health"))
+	max_health = Skills.lucifer_max_health(snap_to_half(stats.get_value(&"max_health")))
 	health = minf(health, max_health)
 	EventBus.player_health_changed.emit(health, max_health)
 	queue_redraw()
@@ -631,6 +657,12 @@ static func snap_to_half(value: float) -> float:
 ## 回复生命（苹果等）；向上取整到半颗心。
 func heal(amount: float) -> void:
 	if amount <= 0.0 or RunState.is_dead:
+		return
+	if Skills.has_lucifer():
+		Skills.convert_lucifer_healing(maxf(0.0, health + amount - 0.5))
+		health = 0.5
+		EventBus.player_health_changed.emit(health, max_health)
+		queue_redraw()
 		return
 	health = minf(max_health, snap_to_half(health + amount))
 	EventBus.player_health_changed.emit(health, max_health)

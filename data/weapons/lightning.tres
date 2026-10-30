@@ -6,6 +6,7 @@
 script = ExtResource("1")
 id = &"lightning"
 display_name = "闪电"
-description = "瞬发命中并弹射一次；穿透追加 50% 伤害的链段。"
+description = "80% 武器伤害；瞬发命中并弹射一次，穿透追加 50% 伤害的链段。"
 brief = "瞬发 · 弹射"
+damage_scale = 0.8
 tags = Array[StringName]([&"instant", &"chain"])

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sprite"
+display_name = "精灵"
+description = "沿略随机的弧线飞出并减速，停下后自动索敌短冲刺；可攻击 1＋穿透 次，最多存在 20 秒。享受召唤伤害加成。"
+brief = "减速 · 自主索敌"
+tags = Array[StringName]([&"projectile", &"summon", &"homing"])

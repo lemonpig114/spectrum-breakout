@@ -17,6 +17,22 @@ const NEIGHBOR_OFFSETS := [
 ]
 ## 压测时可关闭分离，量化其成本；正常游戏始终为 true。
 static var enabled := true
+static var threaded := OS.get_cmdline_user_args().has("--threaded-flock")
+static var _job: RefCounted
+static var _task := -1
+static var _checked_frame := -1
+
+
+static func shutdown() -> void:
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+	_task = -1
+	_job = null
+	_checked_frame = -1
+	_frame = -1
+	_cells.clear()
+	_steerings.clear()
+	_corrections.clear()
 
 static var _frame := -1
 static var _cells: Dictionary = {}
@@ -27,6 +43,9 @@ static var _steerings: Dictionary = {}
 
 
 static func separation(enemy: Enemy) -> Vector2:
+	if threaded:
+		_ensure_threaded(enemy)
+		return _steerings.get(enemy.get_instance_id(), Vector2.ZERO)
 	_ensure_grid(enemy)
 	var id := enemy.get_instance_id()
 	if _steerings.has(id):
@@ -91,9 +110,38 @@ static func _ensure_grid(enemy: Enemy) -> void:
 ## 软位置修正：追逐的径向速度再大，也不应把多只敌人压在同一像素。
 ## 每对最多各承担约一半穿插深度；每两帧合计封顶 4px，再分摊到两帧，避免突然弹跳。
 static func correction(enemy: Enemy) -> Vector2:
-	_ensure_grid(enemy)
+	if threaded:
+		_ensure_threaded(enemy)
+	else:
+		_ensure_grid(enemy)
 	var value: Vector2 = _corrections.get(enemy.get_instance_id(), Vector2.ZERO)
 	return value * CORRECTION_PER_FRAME
+
+
+static func _ensure_threaded(enemy: Enemy) -> void:
+	var frame := Engine.get_physics_frames()
+	if frame == _checked_frame:
+		return
+	_checked_frame = frame
+	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_steerings.clear()
+		_corrections.clear()
+		for i in _job.ids.size():
+			_steerings[_job.ids[i]] = _job.steering[i]
+			_corrections[_job.ids[i]] = _job.corrections[i]
+		_cells = _job.cells
+		_job = null
+		_task = -1
+	if _task >= 0 or frame % 2 != 0:
+		return
+	_job = preload("res://scripts/enemies/FlockJob.gd").new()
+	for node in enemy.get_tree().get_nodes_in_group(&"enemies"):
+		if node is Enemy and not node.is_dead:
+			_job.positions.append(node.global_position)
+			_job.radii.append(node.radius)
+			_job.ids.append(node.get_instance_id())
+	_task = WorkerThreadPool.add_task(_job.compute, false, "Enemy separation")
 
 
 

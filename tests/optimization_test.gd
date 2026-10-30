@@ -33,6 +33,24 @@ func _ready() -> void:
 	failures += _check(is_equal_approx(near.health, before), "other DoT bucket leaves enemy untouched")
 	EventBus.dot_tick.emit(near._dot_bucket)
 	failures += _check(near.health < before, "global DoT bucket applies damage")
+	near._poison_dps = 0.0
+	near.health = 100000.0
+	for i in 1000:
+		near.apply_burn(4.0)
+	failures += _check(near._burn_ticks.size() == 4, "thousands of burn applications use four fixed slots")
+	before = near.health
+	near._apply_dot_tick()
+	failures += _check(is_equal_approx(before - near.health, 1000.0), "burn ring preserves stacked tick damage")
+	near.apply_burn(40.0)
+	before = near.health
+	near._apply_dot_tick()
+	failures += _check(is_equal_approx(before - near.health, 1010.0), "new burns overlap existing schedules exactly")
+	near._apply_dot_tick()
+	near._apply_dot_tick()
+	before = near.health
+	near._apply_dot_tick()
+	failures += _check(is_equal_approx(before - near.health, 10.0) and near._burn_pending < 0.000001,
+		"old burns expire while the later application retains its final tick")
 	var batch := get_tree().get_first_node_in_group(&"enemy_batch_renderer") as EnemyBatchRenderer
 	failures += _check(batch != null and near.batch_rendered, "ordinary enemy uses shared MultiMesh")
 	var manager: ProjectileManager = main.projectile_manager

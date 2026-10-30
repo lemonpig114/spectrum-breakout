@@ -8,8 +8,8 @@ func check(value: bool, message: String) -> void:
 		print("FAIL ", message)
 
 func _ready() -> void:
-	var boundaries := [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0, 360.0]
-	var rates := [3.0, 4.0, 6.0, 13.0, 6.0, 8.0, 12.0, 6.0, 8.0]
+	var boundaries := [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0, 330.0, 360.0, 420.0, 480.0, 540.0]
+	var rates := [3.0, 4.0, 6.0, 13.0, 6.0, 8.0, 12.0, 6.0, 8.0, 10.0, 6.0, 10.0, 12.0]
 	for i in boundaries.size():
 		check(Director.spawn_phase(boundaries[i]) == i, "phase boundary %d" % i)
 		check(is_equal_approx(Director.spawn_rate(boundaries[i]), rates[i]), "rate boundary %d" % i)
@@ -28,7 +28,21 @@ func _ready() -> void:
 		var wanted: StringName = &"ranged_plane" if index < 2 else (&"chaser_square" if index < 6 else (&"chaser_triangle" if index < 10 else &"chaser_round"))
 		check(Director._phase_type(6, index).id == wanted, "late four-type mix")
 	check(Director._phase_type(7, 0).id == &"chaser_hex" and Director._phase_type(7, 1).id == &"chaser_hex", "five-to-six-minute solo hex phase")
-	check(Director._phase_type(8, 0).id == &"chaser_round" and Director._phase_type(8, 1).id == &"ranged_plane" and Director._phase_type(8, 2).id == &"chaser_square", "post-six-minute three-way mix")
+	for index in 8:
+		check(Director._phase_type(8, index).id == (&"chaser_hex" if index < 6 else &"chaser_round"), "330-second hex/exploder 6:2 cycle")
+	for index in 10:
+		check(Director._phase_type(9, index).id == (&"chaser_hex" if index < 8 else &"ranged_plane"), "360-second hex/ranged 8:2 cycle")
+		check(Director._phase_type(10, index).id == &"chaser_hex", "boss phase only hex")
+		check(Director._phase_type(11, index).id == (&"chaser_hex" if index < 6 else &"ranged_plane"), "480-second hex/ranged 6:4 cycle")
+	for i in 15:
+		var seconds := 540.0 + i * 15.0
+		var wanted: StringName = [&"chaser_triangle", &"chaser_square", &"chaser_hex", &"chaser_round", &"ranged_plane"][i % 5]
+		check(Director._phase_type(Director.spawn_phase(seconds), 0).id == wanted, "endless cycles through five single-type waves")
+		check(Director.spawn_rate(seconds) == [12.0, 10.0, 8.0, 10.0, 8.0][i % 5], "endless rate per wave")
+		check(Director.health_multiplier(seconds) == 35.0 + floorf((seconds - 540.0) / 100.0), "endless hp grows every hundred seconds")
+	check(Director.health_multiplier(539.99) == 20.0 and Director.health_multiplier(540.0) == 35.0 and Director.health_multiplier(639.99) == 35.0 and Director.health_multiplier(640.0) == 36.0, "endless hp exact boundaries")
+	check(Director.health_multiplier(329.99) == 6.0 and Director.health_multiplier(330) == 7.0
+		and Director.health_multiplier(360) == 10.0 and Director.health_multiplier(420) == 15.0, "new late-game hp steps")
 	var triangle := ContentDB.get_enemy(&"chaser_triangle")
 	var square := ContentDB.get_enemy(&"chaser_square")
 	check(triangle.max_health * Director.health_multiplier(0) == 20.0 and Director.health_multiplier(15) == 1.0, "opening 0.8 hp")
@@ -78,6 +92,16 @@ func _ready() -> void:
 		check(spread >= 500.0, "surround spawns ring the player")
 		check(octants.size() >= 6, "surround covers most directions")
 		check(enemies[10].type_data.id == &"chaser_triangle", "surround keeps triangles")
+	var announcements := [0]
+	EventBus.endless_mode_entered.connect(func(): announcements[0] += 1)
+	Director._boss_spawned = true
+	Director._hex_boss_spawned = true
+	Director._endless_announced = false
+	Director._spawn_timer = 1.0
+	RunState.elapsed = 540.0
+	Director._process(0.0)
+	Director._process(0.0)
+	check(announcements[0] == 1 and Director._endless_announced, "endless announcement fires only once")
 	Director.stop()
 	RunState.end_run()
 	world.queue_free()

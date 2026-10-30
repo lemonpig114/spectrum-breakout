@@ -2,7 +2,7 @@ extends Node
 
 ## 局内技能树运行时。
 ##
-## - 维护 76 个技能节点（19 线 × 4 阶）与解锁状态：1 阶无前置；2/3 阶需要 1 阶；
+## - 维护 80 个技能节点（20 线 × 4 阶）与解锁状态：1 阶无前置；2/3 阶需要 1 阶；
 ##   4 阶需要 2、3 阶都点亮。
 ## - 普通数值写入武器/player 的 StatBlock；特殊能力在这里结算。
 ## - 恶魔/天使线互斥：2 阶决定契约阵营，本侧遗物才会进入商店；3 阶解锁地面祭坛。
@@ -21,9 +21,9 @@ const ARROW_RELICS := [
 	[&"rare_burning_arrow", ColorType.RED, &"arrow_burning"],
 ]
 
-## 商店基础 4 格，每次捐款升级 +1 格；最多 14 格（遗物池的实际上限）。
+## 商店基础 4 格，每次捐款升级 +1 格；最多 11 格（最高等级 7）。
 const SHOP_BASE_SLOTS := 4
-const SHOP_MAX_SLOTS := 14
+const SHOP_MAX_SLOTS := 11
 ## 商人基础间隔 90 秒；第一只固定 1:20 出现（见 Director）。
 const MERCHANT_BASE_INTERVAL := 90.0
 
@@ -42,6 +42,7 @@ var player: Player
 var shop_level := 0
 var shop_purchases := 0
 var shop_rerolls := 0
+var _weapon_cache_offered := false
 
 var soul_kills := 0
 
@@ -58,6 +59,11 @@ var _giant_kills := 0
 var _pointed_damage_mod: StatModifierResource
 var _pointed_rate_mod: StatModifierResource
 var guardian_shields := 0
+var demon_shields := 0
+var _demon_shield_timer := 0.0
+var _demon_shield_fraction := 0.0
+var _lucifer_capacity := 0.0
+var _lucifer_healing_damage := 0.0
 ## 护盾发生器只保护生成时的颜色；独立于守护层数，不在 HUD 显示。
 var color_shield := -1
 var _travel_distance := 0.0
@@ -77,6 +83,11 @@ var _dice_rate_mod: StatModifierResource
 var _dice_crit_mod: StatModifierResource
 ## 每个遗物实例的修改器 source 都用独立序号，重复拾取叠加时不会互相覆盖。
 var _relic_source_serial := 0
+var _damage_snapshot_frame := -1
+var _damage_snapshot_revision := -1
+var _damage_snapshot_health := -1.0
+var _damage_snapshots := {}
+var _pending_damage_snapshots: Array[RefCounted] = []
 
 ## 调试开关：启动参数 `-- --force-super-crit` 让所有命中强制超暴击，
 ## 便于在没有刷到暴击 4 阶时检查数字表现。
@@ -94,9 +105,16 @@ func _ready() -> void:
 	EventBus.color_changed.connect(_on_color_changed_relics)
 	EventBus.player_died.connect(clear_relic_offers)
 	EventBus.run_ended.connect(clear_relic_offers)
+	EventBus.game_paused.connect(func(paused: bool):
+		if paused:
+			flush_damage_estimates())
+	EventBus.player_died.connect(flush_damage_estimates)
 
 
 func begin_run() -> void:
+	_pending_damage_snapshots.clear()
+	_damage_snapshots.clear()
+	_damage_snapshot_frame = -1
 	nodes = CATALOG.build()
 	relics = CATALOG.build_relics()
 	_by_id.clear()
@@ -112,6 +130,7 @@ func begin_run() -> void:
 	shop_level = 0
 	shop_purchases = 0
 	shop_rerolls = 0
+	_weapon_cache_offered = false
 
 	soul_kills = 0
 	_soul_timer = 0.0
@@ -125,6 +144,11 @@ func begin_run() -> void:
 	_pointed_damage_mod = null
 	_pointed_rate_mod = null
 	guardian_shields = 0
+	demon_shields = 0
+	_demon_shield_timer = 0.0
+	_demon_shield_fraction = 0.0
+	_lucifer_capacity = 0.0
+	_lucifer_healing_damage = 0.0
 	color_shield = -1
 	_travel_distance = 0.0
 	_revolver_volleys.clear()
@@ -162,6 +186,9 @@ func record_damage(key: StringName, amount: float) -> void:
 func record_projectile_damage(context: DamageContext, dealt: float) -> void:
 	if dealt <= 0.0:
 		return
+	if context.has_tag(&"blackhole"):
+		record_damage(&"skill:blackhole_1", dealt)
+		return
 	if context.has_tag(&"splash"):
 		record_damage(&"skill:splash_1", dealt)
 		return
@@ -190,11 +217,48 @@ func record_projectile_damage(context: DamageContext, dealt: float) -> void:
 	record_damage(StringName("weapon:%s" % String(context.weapon_id)) if context.weapon_id != &"" else &"base", dealt)
 	if context.source is Projectile:
 		var projectile := context.source as Projectile
-		for key in projectile.damage_bonus_ratios:
-			damage_bonus_estimates[key] = float(damage_bonus_estimates.get(key, 0.0)) + dealt * float(projectile.damage_bonus_ratios[key])
+		if projectile.damage_snapshot != null and not projectile.damage_snapshot.ratios.is_empty():
+			if projectile.damage_snapshot.pending_damage == 0.0:
+				_pending_damage_snapshots.append(projectile.damage_snapshot)
+			projectile.damage_snapshot.pending_damage += dealt
+
+
+func flush_damage_estimates() -> void:
+	for snapshot in _pending_damage_snapshots:
+		for key in snapshot.ratios:
+			damage_bonus_estimates[key] = float(damage_bonus_estimates.get(key, 0.0)) + snapshot.pending_damage * float(snapshot.ratios[key])
+		snapshot.pending_damage = 0.0
+	_pending_damage_snapshots.clear()
 
 
 func projectile_bonus_ratios(stats: StatBlock, color_index: int, heavy: bool) -> Dictionary:
+	return projectile_bonus_snapshot(stats, color_index, heavy).ratios
+
+
+func projectile_bonus_snapshot(stats: StatBlock, color_index: int, heavy: bool) -> RefCounted:
+	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	var frame := Engine.get_physics_frames()
+	var health := player.health if is_instance_valid(player) else 0.0
+	if frame != _damage_snapshot_frame or StatModifierResource.value_revision != _damage_snapshot_revision \
+			or health != _damage_snapshot_health:
+		_damage_snapshots.clear()
+		_damage_snapshot_frame = frame
+		_damage_snapshot_revision = StatModifierResource.value_revision
+		_damage_snapshot_health = health
+	var key := color_index + (ColorType.COUNT if heavy else 0)
+	if StatBlock.cache_enabled and _damage_snapshots.has(stats) and _damage_snapshots[stats].has(key):
+		preload("res://scripts/game/CombatProfiler.gd").end(&"attribution_snapshot", clock)
+		return _damage_snapshots[stats][key]
+	var result := preload("res://scripts/combat/DamageSnapshot.gd").new()
+	result.ratios = _projectile_bonus_ratios(stats, color_index, heavy)
+	if not _damage_snapshots.has(stats):
+		_damage_snapshots[stats] = {}
+	_damage_snapshots[stats][key] = result
+	preload("res://scripts/game/CombatProfiler.gd").end(&"attribution_snapshot", clock)
+	return result
+
+
+func _projectile_bonus_ratios(stats: StatBlock, color_index: int, heavy: bool) -> Dictionary:
 	var result := {}
 	var raw := stats.get_value(&"damage") + (40.0 if heavy else 0.0)
 	var mult := stats.get_value(&"damage_mult") + lens_damage_bonus(color_index) + cracked_armor_bonus()
@@ -409,7 +473,7 @@ func _on_color_changed_impact(new_color: int) -> void:
 			continue
 		if enemy.global_position.distance_squared_to(center) > radius_sq:
 			continue
-		if RunState.color_relation(new_color, enemy.color_index) != &"advantage":
+		if RunState.color_relation(new_color, enemy.damage_color_at(center)) != &"advantage":
 			continue
 		var context := build_hit_context(player, enemy, base_damage, new_color, false)
 		context.add_tag(&"impact")
@@ -426,7 +490,7 @@ func _on_color_changed_impact(new_color: int) -> void:
 func _on_color_changed_relics(new_color: int) -> void:
 	if not RunState.is_running or RunState.is_dead or player == null or not is_instance_valid(player):
 		return
-	if relic_count(&"epic_shield_generator") > 0:
+	if relic_count(&"epic_shield_generator") > 0 and not has_lucifer():
 		color_shield = new_color
 		FX.hit_burst(player.global_position, RunState.color_of(new_color), 35.0, 0.18)
 	var revolvers := relic_count(&"epic_classic_revolver")
@@ -499,14 +563,14 @@ func lottery_chance() -> float:
 
 
 func try_guardian_shield() -> bool:
-	if guardian_shields <= 0:
+	if has_lucifer() or guardian_shields <= 0:
 		return false
 	guardian_shields -= 1
 	return true
 
 
 func try_color_shield(source: Node) -> bool:
-	if color_shield < 0 or source == null:
+	if has_lucifer() or color_shield < 0 or source == null:
 		return false
 	var attack_color := -1
 	if source is Enemy:
@@ -517,6 +581,105 @@ func try_color_shield(source: Node) -> bool:
 		return false
 	color_shield = -1
 	return true
+
+
+func has_lucifer() -> bool:
+	return relic_count(&"iridescent_lucifer") > 0
+
+
+func add_guardian_shields(count: int) -> void:
+	if not has_lucifer():
+		guardian_shields += maxi(0, count)
+
+
+func displayed_shields() -> int:
+	return demon_shields if has_lucifer() else guardian_shields
+
+
+func _activate_lucifer() -> void:
+	guardian_shields = 0
+	color_shield = -1
+	_lucifer_capacity = maxf(0.0, player.stats.get_value(&"max_health"))
+	_add_demon_shields(_lucifer_capacity)
+	player.max_health = 0.5
+	player.health = 0.5
+	EventBus.player_health_changed.emit(player.health, player.max_health)
+
+
+func lucifer_max_health(raw_max: float) -> float:
+	if not has_lucifer():
+		return raw_max
+	var growth := maxf(0.0, raw_max - _lucifer_capacity)
+	_lucifer_capacity = raw_max
+	if growth > 0.0:
+		_add_demon_shields(growth)
+	return 0.5
+
+
+func convert_lucifer_healing(amount: float) -> void:
+	_lucifer_healing_damage += maxf(0.0, amount) * 10.0
+	_sync_lucifer_bonuses()
+
+
+func _add_demon_shields(amount: float) -> void:
+	_demon_shield_fraction += maxf(0.0, amount)
+	var added := floori(_demon_shield_fraction + 0.000001)
+	_demon_shield_fraction -= added
+	demon_shields += added
+	if added > 0:
+		_demon_shield_timer = 0.0
+	_sync_lucifer_bonuses()
+
+
+func _sync_lucifer_bonuses() -> void:
+	var stats := player.weapon.stats
+	stats.remove_modifiers_from(&"relic_iridescent_lucifer_healing")
+	stats.remove_modifiers_from(&"relic_iridescent_lucifer_shields")
+	var healing := _make_modifier(&"damage", StatModifierResource.Op.FLAT, _lucifer_healing_damage)
+	healing.source = &"relic_iridescent_lucifer_healing"
+	stats.add_modifier(healing)
+	var shields := _make_modifier(&"damage_mult", StatModifierResource.Op.ADD_PERCENT, demon_shields * 0.1)
+	shields.source = &"relic_iridescent_lucifer_shields"
+	stats.add_modifier(shields)
+
+
+func _tick_demon_shield(delta: float) -> void:
+	if not has_lucifer():
+		return
+	if demon_shields > 0:
+		_demon_shield_timer = 0.0
+		return
+	_demon_shield_timer += delta
+	if _demon_shield_timer >= 30.0:
+		_add_demon_shields(1.0)
+
+
+func try_demon_shield() -> bool:
+	if not has_lucifer() or demon_shields <= 0:
+		return false
+	demon_shields -= 1
+	_demon_shield_timer = 0.0
+	_sync_lucifer_bonuses()
+	# Set protection before deaths: exploding enemies can call Player.take_damage.
+	player._invuln = 0.5
+	for node in get_tree().get_nodes_in_group(&"enemies"):
+		var enemy := node as Enemy
+		if enemy != null and enemy.kill_by_relic(&"relic:iridescent_lucifer", false, true):
+			FX.execution_number(enemy.global_position)
+	FX.hit_burst(player.global_position, Color(1.4, 0.02, 0.08), 120.0, 0.35, EnergyBurst.STYLE_STAR)
+	return true
+
+
+func try_michael_execution(context: DamageContext) -> void:
+	var enemy := context.target as Enemy
+	if relic_count(&"iridescent_michael") == 0 or not context.has_tag(&"super_crit") \
+			or enemy == null or enemy.is_dead or enemy._hex_rally_time > 0.0:
+		return
+	var boss := enemy.type_data != null and enemy.type_data.is_boss
+	var threshold := 0.30 if boss else 0.60
+	if enemy.max_health > 0.0 and enemy.health / enemy.max_health < threshold:
+		if enemy.kill_by_relic(&"relic:iridescent_michael", true):
+			FX.text_popup(enemy.global_position, "斩杀", Color(2.2, 1.8, 0.8), 23)
 
 
 func temp_luck() -> float:
@@ -612,6 +775,17 @@ func fire_rate_cap_multiplier() -> float:
 	return 9.0 if is_unlocked(&"fire_4") else 3.0
 
 
+## Once per trigger, independent of pellet count; secondary attacks never roll again.
+func fire_extra_shot_count(effective_rate_bonus: float) -> int:
+	return 1 + floori(maxf(0.0, effective_rate_bonus) * 2.0 + 0.000001)
+
+
+func roll_fire_extra_shots(effective_rate_bonus: float) -> int:
+	if not is_unlocked(&"fire_3") or RunState.rng.randf() >= 0.30:
+		return 0
+	return fire_extra_shot_count(effective_rate_bonus)
+
+
 func heavy_shot_enabled() -> bool:
 	return is_unlocked(&"heavy_4")
 
@@ -668,21 +842,27 @@ func build_hit_context(
 	base_damage: float,
 	color_index: int,
 	allow_super_crit: bool = true,
-	allow_crit: bool = true
+	allow_crit: bool = true,
+	hit_position: Vector2 = Vector2.INF
 ) -> DamageContext:
 	var context := DamageContext.new()
 	context.source = source
 	context.target = target
 	context.color_index = color_index
 	context.hit_position = target.global_position if target != null else Vector2.ZERO
+	if hit_position != Vector2.INF:
+		context.hit_position = hit_position
+	elif source is Node2D and target != null:
+		context.hit_position = (source as Node2D).global_position
 
 	if target == null:
 		context.amount = base_damage
 		return context
 
 	# 无色分身不参与颜色克制，也不受同色减伤。
-	context.relation = RunState.color_relation(color_index, target.color_index) if color_index >= 0 else &"neutral"
-	context.color_multiplier = RunState.color_multiplier(color_index, target.color_index) if color_index >= 0 else 1.0
+	var defender_color := target.damage_color_at(context.hit_position)
+	context.relation = RunState.color_relation(color_index, defender_color) if color_index >= 0 else &"neutral"
+	context.color_multiplier = RunState.color_multiplier(color_index, defender_color) if color_index >= 0 else 1.0
 
 	var is_weakness := context.relation == &"advantage"
 	var multiplier := context.color_multiplier
@@ -745,7 +925,7 @@ func on_weakness_hit(enemy: Enemy, base_damage: float, color_index: int) -> void
 
 
 func try_execute(enemy: Enemy, is_weakness: bool) -> void:
-	if not is_unlocked(&"weak_4") or enemy == null or enemy.is_dead or not is_weakness:
+	if not is_unlocked(&"weak_4") or enemy == null or enemy.is_dead or not is_weakness or not enemy.can_be_executed():
 		return
 	if enemy.max_health <= 0.0 or enemy.health <= 0.0:
 		return
@@ -808,7 +988,7 @@ func apply_splash(
 			continue
 
 		context.target = enemy
-		context.relation = RunState.color_relation(color_index, enemy.color_index)
+		context.relation = RunState.color_relation(color_index, enemy.damage_color_at(world_position))
 		enemy.take_damage(context)
 		try_execute(enemy, context.relation == &"advantage")
 
@@ -880,12 +1060,14 @@ func soul_damage() -> float:
 # ── 帧更新：能量增益、击杀层数、灵魂脉冲 ───────────────────────
 
 func _process(delta: float) -> void:
+	flush_damage_estimates()
 	if not RunState.is_running or RunState.is_dead:
 		return
 	if player == null or not is_instance_valid(player):
 		return
 
 	_tick_energy_buff(delta)
+	_tick_demon_shield(delta)
 	_tick_speed_rate()
 	_tick_giant_scaling()
 	_tick_pointed_vessel()
@@ -1072,12 +1254,12 @@ func _nearest_enemy_to(world_position: Vector2) -> Enemy:
 
 # ── 幸运 / 宝箱 ────────────────────────────────────────────────
 
-## 前期多开资源箱，后期限制箱量：2% 基础 + 每点幸运 0.2%，封顶 6%。
+## 稀疏资源箱：1.2% 基础 + 每点幸运 0.01%，封顶 3%。
 ## 上限压低是为了控制后期：高击杀密度会把“每次击杀概率”放大成宝箱瀑布。
 func chest_drop_chance() -> float:
 	if not is_unlocked(&"luck_1"):
 		return 0.0
-	return minf(0.06, 0.02 + luck() * 0.002)
+	return minf(0.03, 0.012 + luck() * 0.0001)
 
 
 ## 遗物低频产出：10% 基础，二阶 +5%，虹彩每层 +2%，封顶 20%。
@@ -1106,7 +1288,15 @@ func on_chest_discovered() -> void:
 
 
 ## 宝箱在磁吸到玩家后打开：先判定遗物，否则给金币/经验。
-func open_chest(world_position: Vector2) -> void:
+func chest_gold_reward() -> int:
+	return 3 * (6 + int(round(luck() * 0.5)))
+
+
+func chest_xp_reward() -> int:
+	return 3 * (3 + int(round(luck() * 0.35)))
+
+
+func open_chest(world_position: Vector2, collect_resources: bool = false) -> void:
 	Audio.play(&"chest")
 	var relic := _roll_chest_relic() if RunState.rng.randf() < chest_relic_chance() else null
 	if relic != null and offer_relic(relic.id, "宝箱", true):
@@ -1121,13 +1311,20 @@ func open_chest(world_position: Vector2) -> void:
 		return
 
 	# 没出遗物：金币与经验各半，数量随幸运小幅提高。
-	var bonus := int(round(luck() * 0.5))
 	if RunState.rng.randf() < 0.5:
-		Pickups.spawn_gold(world_position, 6 + bonus)
-		FX.text_popup(world_position + Vector2(0.0, -16.0), "金币 +%d" % (6 + bonus), Color(1.0, 0.85, 0.35), 15)
+		var amount := chest_gold_reward()
+		if collect_resources:
+			RunState.add_gold(amount)
+		else:
+			Pickups.spawn_gold(world_position, amount)
+		FX.text_popup(world_position + Vector2(0.0, -16.0), "金币 +%d" % amount, Color(1.0, 0.85, 0.35), 15)
 	else:
-		Pickups.spawn_xp(world_position, 3 + int(round(luck() * 0.35)))
-		FX.text_popup(world_position + Vector2(0.0, -16.0), "经验 +%d" % (3 + int(round(luck() * 0.35))), Color(0.5, 0.95, 1.0), 15)
+		var amount := chest_xp_reward()
+		if collect_resources:
+			RunState.add_xp(amount)
+		else:
+			Pickups.spawn_xp(world_position, amount)
+		FX.text_popup(world_position + Vector2(0.0, -16.0), "经验 +%d" % amount, Color(0.5, 0.95, 1.0), 15)
 	FX.hit_burst(world_position, Color(1.6, 1.2, 0.45), 28.0, 0.22, EnergyBurst.STYLE_HEAVY)
 
 
@@ -1247,7 +1444,7 @@ func _rarity_color(rarity: int) -> Color:
 		RelicResource.RARITY_CURSED:
 			return Color(1.0, 0.25, 0.3)
 		_:
-			return Color(0.75, 0.7, 0.55)
+			return Color(0.65, 0.65, 0.65)
 
 
 # ── 内部 ────────────────────────────────────────────────────────
@@ -1332,6 +1529,15 @@ func shop_relic_pool(include_chest_only: bool = false) -> Array[RelicResource]:
 	var committed := merchant_side()
 	var pool: Array[RelicResource] = []
 	for relic in relics:
+		if relic.id == &"epic_weapon_cache":
+			# Shop special roll only: never in normal rarity, gift, or chest pools.
+			continue
+		if relic.id == &"iridescent_lucifer" and not (_line_maxed(&"path_demon") and _line_maxed(&"giant") and _line_maxed(&"crit")):
+			continue
+		if relic.id == &"iridescent_michael" and not (_line_maxed(&"path_angel") and _line_maxed(&"crit") and _line_maxed(&"weak")):
+			continue
+		if relic.id in [&"iridescent_lucifer", &"iridescent_michael"] and include_chest_only:
+			continue
 		if relic.chest_only and not include_chest_only:
 			continue
 		if relic.unique and (owned_relics.has(relic) or pending_relic_count(relic.id) > 0):
@@ -1359,6 +1565,8 @@ func _line_maxed(branch: StringName) -> bool:
 ## 抽 count 个不重复的商店货品；exclude 用于重掷时避开当前货架。
 ## 商店等级 / 契约品质会提高高稀有度遗物的权重，不再有阵营概率翻倍。
 func shop_offers(count: int, exclude: Array[StringName] = []) -> Array[RelicResource]:
+	if count <= 0:
+		return []
 	var candidates: Array[RelicResource] = []
 	for relic in shop_relic_pool():
 		if exclude.has(relic.id):
@@ -1366,6 +1574,9 @@ func shop_offers(count: int, exclude: Array[StringName] = []) -> Array[RelicReso
 		candidates.append(relic)
 
 	var offers: Array[RelicResource] = []
+	var special := _roll_weapon_cache_offer(exclude)
+	if special != null:
+		offers.append(special)
 	while offers.size() < count and not candidates.is_empty():
 		var rarity_totals := _shop_rarity_weights()
 		var available_total := 0.0
@@ -1409,15 +1620,31 @@ func shop_offers(count: int, exclude: Array[StringName] = []) -> Array[RelicReso
 	return offers
 
 
+func _roll_weapon_cache_offer(exclude: Array[StringName]) -> RelicResource:
+	if _weapon_cache_offered or exclude.has(&"epic_weapon_cache") or relic_count(&"epic_weapon_cache") > 0 \
+			or pending_relic_count(&"epic_weapon_cache") > 0 or player == null or not is_instance_valid(player):
+		return null
+	if player.weapon == null or player.weapon.owned_forms.size() >= WeaponRuntime.PRIMARY_ORDER.size():
+		return null
+	if RunState.rng.randf() >= 0.01:
+		return null
+	_weapon_cache_offered = true
+	return get_relic(&"epic_weapon_cache")
+
+
 func _shop_rarity_weights() -> Dictionary:
-	var level := shop_level + shop_quality_bonus(merchant_side())
+	# 品质权重只看商店等级；契约/祭坛阵营不再影响出货品质。
+	var level := shop_level
 	match level:
 		0: return {0: 0.70, 1: 0.30}
 		1: return {0: 0.55, 1: 0.40, 2: 0.05}
 		2: return {0: 0.40, 1: 0.48, 2: 0.12}
 		3: return {0: 0.25, 1: 0.55, 2: 0.18, 3: 0.02}
 		4: return {0: 0.15, 1: 0.55, 2: 0.25, 3: 0.05}
-		_: return {0: 0.05, 1: 0.50, 2: 0.35, 3: 0.10}
+		_:
+			if shop_level >= SHOP_MAX_SLOTS - SHOP_BASE_SLOTS:
+				return {0: 0.05, 1: 0.495, 2: 0.35, 3: 0.10, 4: 0.005}
+			return {0: 0.05, 1: 0.50, 2: 0.35, 3: 0.10}
 
 
 ## 商店/调试用的直接拾取。
@@ -1461,9 +1688,11 @@ func grant_relic(id: StringName, value_multiplier: float = 1.0) -> bool:
 		return true
 
 	owned_relics.append(relic)
+	if relic.id == &"iridescent_lucifer":
+		_activate_lucifer()
 	_apply_relic(relic, value_multiplier, "")
 	if relic.id == &"epic_weapon_cache":
-		EventBus.weapon_reward_requested.emit("武装密钥")
+		EventBus.weapon_reward_requested.emit("家传神兵")
 	if relic.id == &"rare_golden_apple":
 		player.heal(player.max_health)
 	elif relic.id == &"rare_bond":
@@ -1478,7 +1707,7 @@ func grant_relic(id: StringName, value_multiplier: float = 1.0) -> bool:
 		_ensure_dynamic_modifiers()
 		_tick_pointed_vessel()
 	elif relic.id == &"angel_guardian":
-		guardian_shields += 2 * maxi(1, roundi(value_multiplier))
+		add_guardian_shields(2 * maxi(1, roundi(value_multiplier)))
 
 	if relic.id == &"rare_adrenaline":
 		_ensure_dynamic_modifiers()
@@ -1608,7 +1837,7 @@ func _double_relics(side: StringName) -> void:
 		if relic.side == side:
 			_apply_relic(relic, 1.0, "_double")
 			if relic.id == &"angel_guardian":
-				guardian_shields += 2
+				add_guardian_shields(2)
 	if side == &"demon":
 		_tick_pointed_vessel()
 
@@ -1730,13 +1959,13 @@ func _pick_branch(branches: Dictionary, keys: Array) -> StringName:
 	for key in keys:
 		var list: Array = branches[key]
 		for node in list:
-			total += maxf(0.01, (node as SkillNodeResource).weight) * _branch_offer_bonus(StringName(key))
+			total += _node_offer_weight(node)
 
 	var roll := RunState.rng.randf() * total
 	for key in keys:
 		var list: Array = branches[key]
 		for node in list:
-			roll -= maxf(0.01, (node as SkillNodeResource).weight) * _branch_offer_bonus(StringName(key))
+			roll -= _node_offer_weight(node)
 			if roll <= 0.0:
 				return StringName(key)
 
@@ -1746,18 +1975,22 @@ func _pick_branch(branches: Dictionary, keys: Array) -> StringName:
 func _branch_offer_bonus(branch: StringName) -> float:
 	for chosen: SkillNodeResource in unlocked.values():
 		if chosen.branch == branch:
-			return 1.5
+			return 3.0
 	return 1.0
+
+
+func _node_offer_weight(node: SkillNodeResource) -> float:
+	return maxf(0.01, node.weight) * _branch_offer_bonus(node.branch)
 
 
 func _pick_node(list: Array) -> SkillNodeResource:
 	var total := 0.0
 	for node in list:
-		total += maxf(0.01, (node as SkillNodeResource).weight)
+		total += _node_offer_weight(node)
 
 	var roll := RunState.rng.randf() * total
 	for node in list:
-		roll -= maxf(0.01, (node as SkillNodeResource).weight)
+		roll -= _node_offer_weight(node)
 		if roll <= 0.0:
 			return node as SkillNodeResource
 

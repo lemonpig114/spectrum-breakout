@@ -5,8 +5,9 @@ const ENEMY_BATCH_RENDERER := preload("res://scripts/enemies/EnemyBatchRenderer.
 const WEAPON_CHOICE_PANEL := preload("res://scripts/ui/WeaponChoicePanel.gd")
 const DEBUG_CONSOLE := preload("res://scripts/ui/DebugConsole.gd")
 const PERFORMANCE_RECORDER := preload("res://scripts/game/PerformanceRecorder.gd")
+const BLACK_HOLE_FIELD := preload("res://scripts/skills/BlackHoleField.gd")
 const SUMMON_FIELD := preload("res://scripts/skills/SummonField.gd")
-const MENU_SCENE := "res://scenes/character_select.tscn"
+const MENU_SCENE := "res://scenes/main_menu.tscn"
 const ARENA_RECT := Rect2(-2400.0, -1800.0, 4800.0, 3600.0)
 const FONT_PATH := "res://assets/fonts/NotoSansSC-Variable.ttf"
 ## 死亡演出（裂片、涟漪、震屏）播完再弹结算，避免一帧内冻结画面。
@@ -47,6 +48,8 @@ var debug_console: DebugConsole
 
 
 func _ready() -> void:
+	var resume_data := GameSave.pending
+	GameSave.pending = {}
 	Engine.time_scale = 1.0
 	if OS.is_debug_build():
 		print("RENDER method=%s driver=%s hdr_2d=%s" % [
@@ -73,6 +76,8 @@ func _ready() -> void:
 	_spawn_player()
 	projectile_manager.combat.player = player
 	world.add_child(ENEMY_BATCH_RENDERER.new())
+	if not OS.get_cmdline_user_args().has("--no-overlay-batch"):
+		world.add_child(preload("res://scripts/enemies/EnemyOverlayRenderer.gd").new())
 	weapon_choice_panel = WEAPON_CHOICE_PANEL.new()
 	$HUD.add_child(weapon_choice_panel)
 	if OS.is_debug_build() and not OS.has_feature("mobile"):
@@ -88,9 +93,14 @@ func _ready() -> void:
 	summon_field.name = "SummonField"
 	world.add_child(summon_field)
 	summon_field.setup(player)
-	if player.character != null and player.character.id == &"prism":
+	var black_hole := BLACK_HOLE_FIELD.new()
+	black_hole.name = "BlackHoleField"
+	world.add_child(black_hole)
+	black_hole.setup(player, projectile_manager)
+	if resume_data.is_empty() and player.character != null and player.character.id == &"prism":
 		Skills.grant_relic(&"epic_six_sided_die")
-	_debug_grant_relics()
+	if resume_data.is_empty():
+		_debug_grant_relics()
 
 	camera.setup(player, ARENA_RECT)
 	Director.setup(world)
@@ -112,7 +122,17 @@ func _ready() -> void:
 	game_over_panel.menu_requested.connect(_return_to_menu)
 	pause_button.pressed.connect(_toggle_manual_pause)
 
-	_play_intro()
+	GameSave.attach(self)
+	if not resume_data.is_empty():
+		GameSave.restore_run(self, resume_data)
+		camera.setup(player, ARENA_RECT)
+		camera.force_update_scroll()
+		player.controls_enabled = true
+		RunState.start()
+		Director.start()
+		GameSave.restore_ui(self, resume_data)
+	else:
+		_play_intro()
 
 
 ## 调试：`-- --relic=dust_knife --relic=dust_apple` 开局直接拾取遗物。
@@ -166,6 +186,7 @@ func _play_intro() -> void:
 	player.controls_enabled = true
 	RunState.start()
 	Director.start()
+	GameSave.checkpoint()
 
 	# 调试：`-- --merchant` 开局直接叫出商人（方便手动检查箭头与商店）。
 	if OS.get_cmdline_user_args().has("--merchant"):
@@ -211,6 +232,7 @@ func _on_skill_reroll_requested() -> void:
 
 
 func _on_skill_chosen(node: SkillNodeResource) -> void:
+	GameSave.checkpoint.call_deferred()
 	_level_ups_pending = maxi(0, _level_ups_pending - 1)
 	# 面板打开期间游戏暂停，节点一定仍然可用；force 只用于防御性兜底。
 	Skills.unlock(node.id, true)
@@ -311,6 +333,7 @@ func _on_shelf_cleared() -> void:
 
 
 func _on_shop_closed() -> void:
+	GameSave.checkpoint.call_deferred()
 	shop_panel.close()
 	hud_control.visible = true
 	RunState.release_pause(&"shop")
@@ -348,6 +371,7 @@ func _open_altar(altar: Altar) -> void:
 
 
 func _on_altar_closed(_traded: bool) -> void:
+	GameSave.checkpoint.call_deferred()
 	altar_panel.close()
 	hud_control.visible = true
 	RunState.release_pause(&"altar")
@@ -396,14 +420,8 @@ func _queue_weapon_reward(source: String) -> void:
 	_flush_pending_events()
 
 
-func open_debug_weapon_choice() -> void:
-	hud_control.visible = false
-	RunState.request_pause(&"weapon_reward")
-	if not weapon_choice_panel.open_primary_choice(player, "控制台获得武器"):
-		_on_weapon_reward_finished()
-
-
 func _on_weapon_reward_finished() -> void:
+	GameSave.checkpoint.call_deferred()
 	hud_control.visible = true
 	RunState.release_pause(&"weapon_reward")
 	_flush_pending_events()
@@ -442,6 +460,8 @@ func _on_pause_closed() -> void:
 
 
 func _on_player_died() -> void:
+	if GameSave.is_live(self):
+		GameSave.clear_run()
 	_pending_merchant = null
 	_pending_altar = null
 	_vacuum_merchant = null
@@ -488,8 +508,9 @@ func _restart_run() -> void:
 	get_tree().reload_current_scene()
 
 
-## 结算/暂停菜单的统一出口：清掉暂停原因与局内状态后回到机体选择。
+## 结算/暂停菜单的统一出口：先保存存活局，再清理暂停状态并返回主菜单。
 func _return_to_menu() -> void:
+	GameSave.checkpoint()
 	_pending_merchant = null
 	_pending_altar = null
 	_vacuum_merchant = null
@@ -541,4 +562,5 @@ func _notification(what: int) -> void:
 
 
 func _exit_tree() -> void:
+	EnemyFlock.shutdown()
 	Engine.time_scale = 1.0

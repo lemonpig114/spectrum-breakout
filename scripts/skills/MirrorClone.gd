@@ -11,7 +11,7 @@ var _shot_cooldown := 0.45
 var _aim := Vector2.RIGHT
 var _age := 0.0
 var _target_scan_timer := 0.0
-var _cached_target: Enemy
+var _cached_target: Node2D
 
 
 func setup(owner_player: Player, position_value: Vector2) -> void:
@@ -44,7 +44,9 @@ func _physics_process(delta: float) -> void:
 	_switch_cooldown = maxf(0.0, _switch_cooldown - delta)
 	_shot_cooldown -= delta
 	_target_scan_timer -= delta
-	if _target_scan_timer <= 0.0 or not is_instance_valid(_cached_target) or _cached_target.is_dead:
+	if _target_scan_timer <= 0.0 or not is_instance_valid(_cached_target) \
+			or (_cached_target is Enemy and _cached_target.is_dead) \
+			or (_cached_target.has_method("can_be_targeted") and not _cached_target.can_be_targeted()):
 		_cached_target = _nearest_enemy()
 		_target_scan_timer = 0.10
 	var enemy := _cached_target
@@ -60,7 +62,7 @@ func _physics_process(delta: float) -> void:
 	global_position = global_position.move_toward(desired, player.effective_move_speed() * delta)
 	if enemy != null:
 		_aim = (enemy.global_position - global_position).normalized()
-		if Skills.is_unlocked(&"clone_3") and _switch_cooldown <= 0.0:
+		if enemy is Enemy and Skills.is_unlocked(&"clone_3") and _switch_cooldown <= 0.0:
 			color_index = posmod(enemy.color_index - 1, ColorType.COUNT)
 			_switch_cooldown = 1.0
 		if _shot_cooldown <= 0.0 and player.projectile_manager != null:
@@ -72,8 +74,8 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 
-func _nearest_enemy() -> Enemy:
-	var best: Enemy = null
+func _nearest_enemy() -> Node2D:
+	var best: Node2D = null
 	var distance := 580.0 * 580.0
 	for node in get_tree().get_nodes_in_group(&"enemies"):
 		if not (node is Enemy):
@@ -85,6 +87,12 @@ func _nearest_enemy() -> Enemy:
 		if value < distance:
 			distance = value
 			best = enemy
+	if player.weapon.primary_form not in [&"sword", &"scythe", &"wave", &"lightning"]:
+		for hole in get_tree().get_nodes_in_group(&"friendly_aim_targets"):
+			var value := global_position.distance_squared_to(hole.global_position)
+			if hole.can_be_targeted() and value < distance:
+				distance = value
+				best = hole
 	return best
 
 

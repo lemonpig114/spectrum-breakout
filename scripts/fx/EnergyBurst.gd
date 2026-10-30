@@ -28,13 +28,19 @@ var style := STYLE_STAR
 var _age := 0.0
 var _veil: Sprite2D
 var _veil_material: ShaderMaterial
+var _star_material: ShaderMaterial
+var _gpu_star := true
 var _serial := 0
 var _veil_enabled := true
 var _owns_veil_slot := false
+var _redraw_timer := 0.0
 var _fragment_phase := 0.0
 
 
 func _ready() -> void:
+	_gpu_star = not OS.get_cmdline_user_args().has("--cpu-hit-stars")
+	_star_material = ShaderMaterial.new()
+	_star_material.shader = preload("res://shaders/hit_star.gdshader")
 	_veil_enabled = not OS.get_cmdline_user_args().has("--no-energy-veil")
 	# 材质和节点只在预热时分配，复用时只重置参数。
 	_veil_material = ShaderMaterial.new()
@@ -65,6 +71,7 @@ func setup(
 		color = Color(color.r * 0.82, color.g * 0.82, color.b * 0.82, color.a)
 	z_index = 30
 	_age = 0.0
+	_redraw_timer = 0.0
 	_serial += 1
 	_fragment_phase = world_position.x * 0.017 + world_position.y * 0.031
 	# 暴击保留锐利星芒，其余爆点叠加柔软的局部能量层。
@@ -72,15 +79,18 @@ func setup(
 	_owns_veil_slot = _veil_enabled and style != STYLE_STAR and style != STYLE_SHATTER and _active_veils < VEIL_CAP
 	if _owns_veil_slot:
 		_active_veils += 1
-	_veil.visible = _owns_veil_slot
+	_veil.visible = _owns_veil_slot or (style == STYLE_STAR and _gpu_star)
+	_veil.material = _star_material if style == STYLE_STAR and _gpu_star else _veil_material
 	_veil.scale = Vector2.ONE * max_radius * 2.6 / 64.0
 	_veil_material.set_shader_parameter("tint", color)
 	_veil_material.set_shader_parameter("effect_style", float(style))
 	_veil_material.set_shader_parameter("phase", float(_serial) * 2.399)
 	_veil_material.set_shader_parameter("progress", 0.0)
+	_star_material.set_shader_parameter("tint", color)
+	_star_material.set_shader_parameter("radius", max_radius)
+	_star_material.set_shader_parameter("progress", 0.0)
 	visible = true
 	set_process(true)
-	queue_redraw()
 
 
 ## 连锁爆炸时只给前 12 个爆点叠能量雾，其余保留几何反馈。
@@ -99,7 +109,8 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	_age += delta
 	if _veil.visible:
-		_veil_material.set_shader_parameter("progress", minf(_age / duration, 1.0))
+		var material := _star_material if style == STYLE_STAR and _gpu_star else _veil_material
+		material.set_shader_parameter("progress", minf(_age / duration, 1.0))
 	if _age >= duration:
 		# 由 FX 回收到对象池，不再 self-free。
 		set_process(false)
@@ -108,10 +119,21 @@ func _process(delta: float) -> void:
 		else:
 			queue_free()
 		return
-	queue_redraw()
+	_redraw_timer -= delta
+	if _redraw_timer <= 0.0:
+		_redraw_timer = 1.0 / 30.0
+		queue_redraw()
 
 
 func _draw() -> void:
+	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	_draw_burst()
+	preload("res://scripts/game/CombatProfiler.gd").end(&"burst_draw", clock)
+
+
+func _draw_burst() -> void:
+	if style == STYLE_STAR and _gpu_star:
+		return
 	var t := clampf(_age / duration, 0.0, 1.0)
 	var ease_t := 1.0 - pow(1.0 - t, 3.0)
 	var alpha := 1.0 - t

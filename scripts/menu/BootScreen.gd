@@ -1,10 +1,10 @@
 extends MenuScreen
 
-## 开局加载动画：标题、三色轨道、进度条，结束后淡出进入选择机体界面。
+## 开局加载动画：标题、三色轨道、进度条，结束后淡出进入主菜单。
 ## 资源实际是瞬时加载的，这里是一段约 1.8 秒的风格化启动演出，可随时跳过。
 
 const DURATION := 1.8
-const SELECT_SCENE := "res://scenes/character_select.tscn"
+const SELECT_SCENE := "res://scenes/main_menu.tscn"
 
 var _loading := 0.0
 var _finished := false

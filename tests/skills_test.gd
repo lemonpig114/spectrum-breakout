@@ -52,9 +52,9 @@ func _ready() -> void:
 
 
 func _test_catalog_rules() -> void:
-	failures += _check(Skills.nodes.size() == 76, "76 skill nodes")
-	failures += _check(Skills.relics.size() == 52, "52 relics")
-	failures += _check(Skills.get_available_nodes().size() == 19, "all nineteen tier-1 nodes start available")
+	failures += _check(Skills.nodes.size() == 80, "80 skill nodes")
+	failures += _check(Skills.relics.size() == 55, "55 relics")
+	failures += _check(Skills.get_available_nodes().size() == 20, "all twenty tier-1 nodes start available")
 
 	failures += _check(Skills.is_available(Skills.get_node_by_id(&"fire_1")), "tier 1 available")
 	failures += _check(not Skills.is_available(Skills.get_node_by_id(&"fire_2")), "tier 2 gated by tier 1")
@@ -76,14 +76,16 @@ func _test_fire_line() -> void:
 	failures += _check(rate_before > 3.0, "fire line raises fire rate")
 	_unlock(&"fire_4")
 	failures += _check(is_equal_approx(Skills.fire_rate_cap_multiplier(), 9.0), "fire cap triples")
-	failures += _check(player.weapon.stats.get_value(&"damage_mult") < 1.0, "overdrive trades damage for speed")
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"damage_mult"), 1.0), "overdrive no longer reduces damage")
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"fire_rate_final"), 1.05 * 1.20), "fire final rate modifiers multiply")
+	failures += _check(player.weapon.stats.get_value(&"ricochet") == 1.0, "tier four grants one ricochet")
 
 
 ## 单发子弹也必须吃到 spread_degrees：曾经只有 count > 1 才应用偏移。
 func _test_spread_line() -> void:
 	player.controls_enabled = false
 	var spread_degrees := player.weapon.stats.get_value(&"spread_degrees")
-	failures += _check(is_equal_approx(spread_degrees, 7.0), "fire tier 3 adds 7 degrees spread")
+	failures += _check(is_equal_approx(spread_degrees, 10.0), "fire tier 3 adds 10 degrees spread")
 
 	var manager: ProjectileManager = main.projectile_manager
 	var before := manager._active.size()
@@ -105,6 +107,9 @@ func _test_spread_line() -> void:
 
 	for i in range(manager._active.size() - 1, -1, -1):
 		manager.release(manager._active[i])
+	# This fixture inspects immediate main-shot spread, not queued bonus shots.
+	main.projectile_manager.combat._events.clear()
+	main.projectile_manager.combat._head = 0
 
 
 func _test_heavy_line() -> void:
@@ -356,7 +361,8 @@ func _test_luck_line() -> void:
 
 	_unlock(&"luck_1")
 	failures += _check(is_equal_approx(Skills.luck(), 12.0), "luck tier 1 grants +12 luck")
-	failures += _check(is_equal_approx(Skills.chest_drop_chance(), 0.044), "tier 1 chest chance is 4.4%")
+	failures += _check(is_equal_approx(Skills.chest_drop_chance(), 0.0132), "tier 1 chest chance is 1.32%")
+	failures += _check(Skills.chest_gold_reward() == 36 and Skills.chest_xp_reward() == 21, "resource chests have triple base payouts")
 	failures += _check(Skills.chest_drop_chance() > 0.0, "luck tier 1 unlocks chest drops")
 	failures += _check(Skills.grant_relic(&"rare_four_leaf"), "lucky relics unlock with luck tier 1")
 	var chance_before := Skills.chest_drop_chance()
@@ -385,12 +391,12 @@ func _test_luck_line() -> void:
 	Skills._tick_temp_luck(61.0)
 	failures += _check(is_equal_approx(Skills.temp_luck(), 0.0), "temporary luck expires")
 
-	# 后期上限：掉箱 6%、宝箱转化遗物 20%。
+	# 后期上限：掉箱 3%、宝箱转化遗物 20%。
 	# 3 阶随机礼物可能是幸运 -3 的三叶草；显式制造高幸运，不依赖抽奖结果。
-	Skills.grant_temp_luck(100.0, 1.0)
+	Skills.grant_temp_luck(200.0, 1.0)
 	failures += _check(
-		is_equal_approx(Skills.chest_drop_chance(), 0.06),
-		"late-game chest drop chance caps at 6%"
+		is_equal_approx(Skills.chest_drop_chance(), 0.03),
+		"late-game chest drop chance caps at 3%"
 	)
 	Skills._tick_temp_luck(2.0)
 	for i in 4:
@@ -507,6 +513,12 @@ func _test_weakness_line() -> void:
 
 
 func _test_elemental_pipeline() -> void:
+	# Earlier contract/luck cases randomly grant relics. Their independent
+	# on-hit soul/arrow procs must not contaminate this ice-only damage check.
+	var saved_relics := Skills.owned_relics.duplicate()
+	for relic in saved_relics:
+		if relic.id in [&"demon_soul_blade", &"rare_poison_arrow", &"rare_frost_arrow", &"rare_burning_arrow"]:
+			Skills.owned_relics.erase(relic)
 	var text_layer := FX._text_layer as FloatingTextLayer
 	var base_health := 5000.0
 	var elemental := Skills.elemental_multiplier()
@@ -540,7 +552,7 @@ func _test_elemental_pipeline() -> void:
 	blue.color_index = _weak_target_color(ColorType.BLUE)
 	_elemental_test_hit(blue, ColorType.BLUE)
 	failures += _check(blue._healthbar.ice and is_equal_approx(blue._slow, 0.25 * elemental), "blue weak hit attaches ice and slows")
-	var second_base := player.weapon.get_final_damage()
+	var second_base := Skills.impact_base_damage(ColorType.BLUE)
 	var preview := Skills.build_hit_context(player, blue, second_base, ColorType.BLUE, false, false)
 	var blue_before := blue.health
 	FX._elemental_label_frame = -1
@@ -548,11 +560,13 @@ func _test_elemental_pipeline() -> void:
 	failures += _check(preview.elemental_bonus > 0.0 and is_equal_approx(blue_before - blue.health, preview.amount), "ice bonus is included exactly once in health loss")
 	failures += _check(blue._healthbar._ice_pulse > 0.0 and _last_damage_style(text_layer) == FloatingTextLayer.STYLE_ICE, "ice icon jumps and emits blue bonus text")
 	blue.queue_free()
+	Skills.owned_relics.assign(saved_relics)
 	failures += _check(float(Skills.damage_totals.get(&"base", 0.0)) > 0.0, "direct projectile health loss is recorded")
 	failures += _check(float(Skills.damage_totals.get(&"skill:weak_3_burn", 0.0)) > 0.0
 		and float(Skills.damage_totals.get(&"skill:weak_3_poison", 0.0)) > 0.0
 		and float(Skills.damage_totals.get(&"skill:weak_3_ice", 0.0)) > 0.0,
 		"all three elemental damage sources are recorded")
+	Skills.flush_damage_estimates()
 	failures += _check(float(Skills.damage_bonus_estimates.get(&"skill:heavy_1", 0.0)) > 0.0,
 		"heavy damage modifier has an estimated contribution")
 

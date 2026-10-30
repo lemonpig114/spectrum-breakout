@@ -30,6 +30,8 @@ const STYLE_SOUL := 6
 const STYLE_BURN := 7
 const STYLE_POISON := 8
 const STYLE_ICE := 9
+const STYLE_BURST := 10
+const STYLE_EXECUTION := 11
 
 # 超级暴击用独立的固定容量 Label 池。数量很少（正常只有暴击 4 阶后的 1%，
 # 调试时强制全超暴击），池满后覆盖最旧的数字，不会随命中增长。
@@ -41,6 +43,7 @@ const SUPER_CRIT_OUTLINE := 6
 const SUPER_CRIT_SHADER := preload("res://shaders/super_crit_gradient.gdshader")
 
 var _cursor := 0
+var _visual_dirty := false
 
 var _positions: Array[Vector2] = []
 var _texts: Array[String] = []
@@ -131,7 +134,7 @@ func add_text(
 	_lifetimes[index] = _lifetime_for(style)
 	_ages[index] = 0.0
 	_alive[index] = true
-	queue_redraw()
+	_visual_dirty = true
 
 
 func add_impact(world_position: Vector2, tint: Color, direction: Vector2) -> void:
@@ -149,7 +152,7 @@ func add_impact(world_position: Vector2, tint: Color, direction: Vector2) -> voi
 	_impact_angles[index] = direction.angle() if direction.length_squared() > 0.001 else randf() * TAU
 	_impact_ages[index] = 0.0
 	_impact_alive[index] = true
-	queue_redraw()
+	_visual_dirty = true
 
 
 func clear() -> void:
@@ -160,7 +163,7 @@ func clear() -> void:
 	for i in SUPER_CRIT_POOL:
 		_sc_alive[i] = false
 		_sc_roots[i].visible = false
-	queue_redraw()
+	_visual_dirty = true
 
 
 func _process(delta: float) -> void:
@@ -171,6 +174,7 @@ func _process(delta: float) -> void:
 		var age := _ages[i] + delta
 		if age >= _lifetimes[i]:
 			_alive[i] = false
+			_visual_dirty = true
 			continue
 		_ages[i] = age
 		_positions[i].x += _drift_x[i] * delta
@@ -187,11 +191,18 @@ func _process(delta: float) -> void:
 
 	_update_super_crit(delta)
 
-	if any_alive:
+	if any_alive or _visual_dirty:
+		_visual_dirty = false
 		queue_redraw()
 
 
 func _draw() -> void:
+	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	_draw_texts()
+	preload("res://scripts/game/CombatProfiler.gd").end(&"text_draw", clock)
+
+
+func _draw_texts() -> void:
 	# Main 可能在 FX.prewarm 之后才设置中文字体，因此每帧读取一次。
 	var base_font := ThemeDB.fallback_font
 	if base_font == null:
@@ -214,7 +225,7 @@ func _draw() -> void:
 			continue
 
 		var style := _styles[i]
-		var font := _emphasis_font_for(base_font) if style == STYLE_WEAKNESS or style == STYLE_CRIT or style == STYLE_SOUL else base_font
+		var font := _emphasis_font_for(base_font) if style in [STYLE_WEAKNESS, STYLE_CRIT, STYLE_SOUL, STYLE_BURST] else base_font
 		var lifetime := _lifetimes[i]
 		var age := _ages[i]
 		var t := clampf(age / lifetime, 0.0, 1.0)
@@ -225,6 +236,8 @@ func _draw() -> void:
 		var base := _colors[i]
 		var draw_color := Color(base.r, base.g, base.b, base.a * alpha)
 		var outline_color := Color(0.0, 0.0, 0.0, 0.85 * alpha)
+		if style == STYLE_EXECUTION:
+			outline_color = Color(1.5, 0.025, 0.06, alpha)
 
 		# 用缩放后的局部坐标绘制，避免每帧修改字号导致字体缓存抖动。
 		var draw_position := _positions[i] + Vector2(0.0, float(_sizes[i]))
@@ -422,7 +435,7 @@ func _size_for(style: int) -> int:
 	match style:
 		STYLE_WEAKNESS, STYLE_SOUL:
 			return 24
-		STYLE_CRIT:
+		STYLE_CRIT, STYLE_BURST:
 			return 29
 		STYLE_SUPER_CRIT:
 			return SUPER_CRIT_FONT_SIZE
@@ -440,7 +453,7 @@ func _lifetime_for(style: int) -> float:
 	match style:
 		STYLE_WEAKNESS, STYLE_SOUL:
 			return 0.6
-		STYLE_CRIT:
+		STYLE_CRIT, STYLE_BURST:
 			return 0.7
 		STYLE_SUPER_CRIT:
 			return 0.95
@@ -458,7 +471,7 @@ func _rise_speed(style: int) -> float:
 	match style:
 		STYLE_WEAKNESS, STYLE_SOUL:
 			return 58.0
-		STYLE_CRIT:
+		STYLE_CRIT, STYLE_BURST:
 			return 42.0
 		STYLE_SUPER_CRIT:
 			return 30.0
@@ -476,7 +489,7 @@ func _outline_width(style: int) -> int:
 	match style:
 		STYLE_WEAKNESS, STYLE_SOUL:
 			return 4
-		STYLE_CRIT:
+		STYLE_CRIT, STYLE_BURST:
 			return 3
 		STYLE_SUPER_CRIT:
 			return 5
@@ -495,7 +508,7 @@ func _pop_scale(style: int, age: float) -> float:
 	match style:
 		STYLE_WEAKNESS, STYLE_SOUL:
 			return 1.0 + 0.12 * pow(1.0 - minf(age / 0.12, 1.0), 2.0)
-		STYLE_CRIT:
+		STYLE_CRIT, STYLE_BURST:
 			return 1.0 + 0.26 * pow(1.0 - minf(age / 0.16, 1.0), 2.0)
 		STYLE_SUPER_CRIT:
 			return 1.0 + 0.34 * pow(1.0 - minf(age / 0.18, 1.0), 2.0)

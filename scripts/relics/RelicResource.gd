@@ -48,4 +48,6 @@ const RARITY_CURSED := 5
 
 ## 商店/描述里的限定标签：唯一遗物显示“唯一”，可重复遗物为空。
 func repeat_label() -> String:
+	if rule_tags.has(&"special"):
+		return "特殊道具"
 	return "唯一" if unique else ""

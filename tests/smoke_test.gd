@@ -89,8 +89,8 @@ func _ready() -> void:
 			and main.player.weapon.core.id == CharacterResource.BASE_WEAPON_ID,
 		"player uses the shared base attack"
 	)
-	failures += _check(Skills.nodes.size() == 76, "skill tree has 76 nodes")
-	failures += _check(Skills.relics.size() == 52, "relic pool has 52 relics")
+	failures += _check(Skills.nodes.size() == 80, "skill tree has 80 nodes")
+	failures += _check(Skills.relics.size() == 55, "relic pool has 55 relics")
 	failures += _check(not Skills.get_available_nodes().is_empty(), "skill tree offers starting nodes")
 
 	# 手动暂停：Esc / 右上角按钮走同一条路径，关闭后恢复 HUD。
@@ -115,17 +115,32 @@ func _ready() -> void:
 	var near_enemy := enemy_scene.instantiate()
 	near_enemy.configure(ContentDB.get_enemy(&"chaser_triangle"), main.player)
 	main.world.add_child(near_enemy)
-	near_enemy.global_position = main.player.global_position + Vector2(40.0, 0.0)
+	near_enemy.global_position = main.player.global_position + Vector2(110.0, 0.0)
 
 	var far_enemy := enemy_scene.instantiate()
 	far_enemy.configure(ContentDB.get_enemy(&"chaser_triangle"), main.player)
 	main.world.add_child(far_enemy)
-	far_enemy.global_position = main.player.global_position + Vector2(200.0, 0.0)
+	far_enemy.global_position = main.player.global_position + Vector2(300.0, 0.0)
+	var boss := load("res://scenes/enemies/square_boss.tscn").instantiate() as SquareBoss
+	boss.configure(ContentDB.get_enemy(&"square_boss"), main.player)
+	main.world.add_child(boss)
+	boss.set_physics_process(false)
+	boss.global_position = main.player.global_position + Vector2(70.0, 0.0)
+	var boss_health := boss.health
+	boss.apply_knockback(main.player.global_position, 1000.0)
+	failures += _check(boss._knockback_time == 0.0, "boss still ignores ordinary knockback")
 
 	main.player.set("_invuln", 0.0)
 	main.player.take_damage(0.5)
 	failures += _check(near_enemy.is_dead, "panic shockwave kills nearby enemies")
 	failures += _check(float(far_enemy.get("_knockback_time")) > 0.0, "panic shockwave knocks back outer enemies")
+	failures += _check(not boss.is_dead and boss.health == boss_health and boss._knockback_time > 0.0,
+		"panic shockwave never kills or damages boss but bypasses push immunity")
+	var boss_distance := boss.global_position.distance_to(main.player.global_position)
+	boss._physics_process(0.016)
+	failures += _check(boss.global_position.distance_to(main.player.global_position) > boss_distance,
+		"boss AI physically moves under the unresisted hurt push")
+	boss.queue_free()
 
 	if is_instance_valid(far_enemy):
 		far_enemy.queue_free()

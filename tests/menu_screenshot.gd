@@ -17,6 +17,12 @@ func _ready() -> void:
 	if mode == "boot":
 		add_child(BOOT_SCENE.instantiate())
 		await get_tree().create_timer(0.9).timeout
+	elif mode in ["main", "settings"]:
+		var menu: Control = load("res://scenes/main_menu.tscn").instantiate()
+		add_child(menu)
+		if mode == "settings":
+			menu._activate(2)
+		await get_tree().create_timer(0.7).timeout
 	else:
 		var screen := SELECT_SCENE.instantiate()
 		add_child(screen)

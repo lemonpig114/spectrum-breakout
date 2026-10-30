@@ -38,6 +38,7 @@ var _hammer_point := Vector2.ZERO
 var _promote_color := ColorType.RED
 var _summon_points := PackedVector2Array()
 var _plate_angle := 0.0
+var _boss_bar := BossHealthBar.new()
 var _hammer_fx_center := Vector2.ZERO
 var _hammer_fx_time := 0.0
 
@@ -63,6 +64,8 @@ func _squash() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_boss_bar.set_health(health, max_health)
+	_boss_bar.step(delta)
 	if is_dead or RunState.is_dead or target == null or not is_instance_valid(target):
 		return
 	# 蓄力时角甲加速旋转，蓄满后接近一秒一转，读起来像“上膛”。
@@ -73,6 +76,15 @@ func _physics_process(delta: float) -> void:
 	# Boss 不做受击挤压（见 _squash），因此也不需要推进挤压恢复。
 	_tick_statuses(delta)
 	if is_dead:
+		return
+	if step_unresisted_knockback(delta):
+		if _action == &"dash_move":
+			# Resume the remaining dash from the pushed position, keeping the
+			# locked destination rather than snapping back to the old path.
+			_dash_origin = global_position
+			_dash_duration = maxf(0.05, _dash_duration - _dash_elapsed)
+			_dash_elapsed = 0.0
+		_request_redraw()
 		return
 	_hammer_cooldown = maxf(0.0, _hammer_cooldown - delta)
 	_dash_cooldown = maxf(0.0, _dash_cooldown - delta)
@@ -95,7 +107,7 @@ func _physics_process(delta: float) -> void:
 				_begin_action(&"dash")
 		if _action == &"":
 			_step_chase(delta)
-	queue_redraw()
+	_request_redraw()
 
 
 func _next_script_action() -> StringName:
@@ -139,7 +151,7 @@ func _begin_action(kind: StringName) -> void:
 			var aim := target.global_position - global_position
 			_dash_target = target.global_position + (aim.normalized() if aim.length_squared() > 0.001 else Vector2.RIGHT) * 120.0
 	_windup = _windup_total
-	queue_redraw()
+	_request_redraw()
 
 
 func _resolve_action() -> void:
@@ -163,7 +175,7 @@ func _resolve_action() -> void:
 			_dash_duration = maxf(0.18, _dash_origin.distance_to(_dash_target) / 850.0)
 	if finished in [&"enhance", &"summon", &"promote"]:
 		_script_timer = SCRIPT_INTERVAL
-	queue_redraw()
+	_request_redraw()
 
 
 func _step_dash(delta: float) -> void:
@@ -258,7 +270,7 @@ func _wave_impact(center: Vector2, hit_radius: float, is_hammer: bool = false) -
 			continue
 		enemy.color_index = color_index
 		enemy._refresh_healthbar()
-		enemy.queue_redraw()
+		enemy._request_redraw()
 		enemy.apply_knockback(center, 420.0, 0.36)
 	FX.shards(center, tint, 28 if is_hammer else 18)
 
@@ -419,21 +431,6 @@ func _draw_dash_charge(tint: Color, charge: float) -> void:
 func _draw_health_bar(tint: Color) -> void:
 	if is_dead or max_health <= 0.0:
 		return
-	var width := 240.0
-	var height := 12.0
-	var top := -radius - 44.0
-	var ratio := clampf(health / max_health, 0.0, 1.0)
-	draw_rect(Rect2(-width * 0.5 - 3.0, top - 3.0, width + 6.0, height + 6.0),
-		Color(0.0, 0.0, 0.0, 0.85))
-	draw_rect(Rect2(-width * 0.5, top, width, height), Color(0.10, 0.10, 0.12, 0.95))
-	draw_rect(Rect2(-width * 0.5, top, width * ratio, height),
-		Color(tint.r * 0.9, tint.g * 0.9, tint.b * 0.9, 1.0))
-	draw_rect(Rect2(-width * 0.5, top, width, height),
-		Color(tint.r, tint.g, tint.b, 0.95), false, 1.5)
-	var font := ThemeDB.fallback_font
-	var text := "%d / %d" % [int(ceil(health)), int(max_health)]
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
-	draw_string(font, Vector2(-text_size.x * 0.5, top - 8.0), text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color(0.95, 0.98, 1.0, 0.95))
-
-
+	_boss_bar.set_health(health, max_health)
+	_boss_bar.paint(self, Vector2(-140, -radius - 44), tint, 280.0, 13.0,
+		"%d / %d" % [int(ceil(health)), int(max_health)])

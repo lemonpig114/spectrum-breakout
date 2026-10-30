@@ -23,6 +23,9 @@ const SPARK_AMOUNT := 3
 ## 密集战斗时限制元素数字的绘制数量；伤害与状态图标照常结算。
 const ELEMENTAL_LABELS_PER_FRAME := 3
 const SPLASH_LABELS_PER_FRAME := 2
+const DIRECT_LABELS_PER_FRAME := 48
+var _direct_label_frame := -1
+var _direct_labels_this_frame := 0
 var _elemental_label_frame := -1
 var _elemental_labels_this_frame := 0
 var _splash_label_frame := -1
@@ -63,6 +66,10 @@ var _spark_active: Array[CPUParticles2D] = []
 var _spark_timers: Array[float] = []
 var _spark_count := 0
 var _spark_budget := SPARK_BUDGET_PER_SECOND
+var _hit_burst_budget := 60.0
+var _hit_burst_frame := -1
+var _hit_burst_cells := {}
+var _hit_bursts_this_frame := 0
 
 
 func _ready() -> void:
@@ -82,6 +89,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_hit_burst_budget = minf(60.0, _hit_burst_budget + delta * 60.0)
 	_splash_budget = minf(SPLASH_VISUAL_RESERVE, _splash_budget + delta * SPLASH_VISUAL_RATE)
 	_shard_budget = minf(
 		SHARD_BUDGET_PER_SECOND,
@@ -261,6 +269,18 @@ func hit_burst(
 	duration: float = 0.26,
 	style: int = EnergyBurst.STYLE_STAR
 ) -> void:
+	if style in [EnergyBurst.STYLE_STAR, EnergyBurst.STYLE_HEAVY]:
+		var frame := Engine.get_process_frames()
+		if frame != _hit_burst_frame:
+			_hit_burst_frame = frame
+			_hit_burst_cells.clear()
+			_hit_bursts_this_frame = 0
+		var cell := Vector3i(floori(world_position.x / 40.0), floori(world_position.y / 40.0), style)
+		if _hit_burst_budget < 1.0 or _hit_bursts_this_frame >= 6 or _hit_burst_cells.has(cell):
+			return
+		_hit_burst_cells[cell] = true
+		_hit_burst_budget -= 1.0
+		_hit_bursts_this_frame += 1
 	_spawn_burst(world_position, color, radius, duration, style)
 
 
@@ -417,6 +437,15 @@ func damage_number(
 	style: int = -1,
 	caption: String = ""
 ) -> void:
+	if style not in [FloatingTextLayer.STYLE_BURN, FloatingTextLayer.STYLE_POISON,
+			FloatingTextLayer.STYLE_ICE, FloatingTextLayer.STYLE_SPLASH, FloatingTextLayer.STYLE_SUPER_CRIT]:
+		var frame := Engine.get_process_frames()
+		if frame != _direct_label_frame:
+			_direct_label_frame = frame
+			_direct_labels_this_frame = 0
+		if _direct_labels_this_frame >= DIRECT_LABELS_PER_FRAME:
+			return
+		_direct_labels_this_frame += 1
 	if style == FloatingTextLayer.STYLE_SPLASH:
 		var splash_frame := Engine.get_process_frames()
 		if splash_frame != _splash_label_frame:
@@ -450,6 +479,12 @@ func hit_impact(world_position: Vector2, color: Color, direction: Vector2) -> vo
 
 
 ## 任意短文字浮字："闪避"、"处决"等。
+func execution_number(world_position: Vector2) -> void:
+	var root := _fx_root()
+	if root != null:
+		_ensure_text_layer(root).add_text(world_position, "99999999999999", Color(0.12, 0.005, 0.015), 26, FloatingTextLayer.STYLE_EXECUTION)
+
+
 func text_popup(world_position: Vector2, text: String, color: Color, font_size: int = 16) -> void:
 	var root := _fx_root()
 	if root == null:

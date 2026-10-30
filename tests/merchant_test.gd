@@ -216,8 +216,8 @@ func _test_purchase() -> void:
 	)
 	failures += _check(panel.get("_offer_prices") == frozen_prices and Skills.shop_purchases == 1,
 		"purchase inflation only affects future shelves")
-	failures += _check(panel._price_of(relic) == price + ShopPanel.PURCHASE_GROWTH,
-		"each purchase increases future prices linearly")
+	failures += _check(panel._price_of(relic) == roundi(relic.price * (1.0 + floorf(RunState.elapsed / 45.0) * 0.10 + 0.03)),
+		"each purchase increases the shared price multiplier")
 	failures += _check(
 		Skills.relic_count(relic.id) == before_count + 1,
 		"bought relic is granted and stacked"
@@ -234,10 +234,11 @@ func _test_purchase() -> void:
 
 
 func _test_reroll() -> void:
-	var offers: Array[RelicResource] = panel.get("_offers")
-	var old_ids: Array[StringName] = []
-	for relic in offers:
-		old_ids.append(relic.id)
+	var rng_state := RunState.rng.state
+	var special_seen := Skills._weapon_cache_offered
+	var expected := Skills.shop_offers(Skills.shop_slots())
+	RunState.rng.state = rng_state
+	Skills._weapon_cache_offered = special_seen
 
 	var before_gold := RunState.gold
 	var cost := int(panel.get("_reroll_cost"))
@@ -250,14 +251,14 @@ func _test_reroll() -> void:
 		"reroll uses the free charge before gold"
 	)
 	failures += _check(new_offers.size() == Skills.shop_slots(), "reroll refills the whole shelf")
-	failures += _check(panel.get("_reroll_cost") == cost + ShopPanel.REROLL_GROWTH,
-		"reroll price grows linearly for the next reroll")
+	var new_cost := int(panel.get("_reroll_cost"))
+	if free_before > 0:
+		failures += _check(new_cost == cost, "free reroll leaves the next reroll price unchanged")
+	else:
+		failures += _check(new_cost == cost + ShopPanel.REROLL_GROWTH + ShopPanel.REROLL_CUBE,
+			"paid reroll raises the next reroll price")
 
-	var reused := false
-	for relic in new_offers:
-		if old_ids.has(relic.id):
-			reused = true
-	failures += _check(not reused, "reroll avoids the previous shelf")
+	failures += _check(new_offers == expected, "reroll draws from the full eligible pool")
 	var sold: Array[bool] = panel.get("_sold")
 	failures += _check(not sold.has(true), "reroll resets sold markers")
 
@@ -370,11 +371,11 @@ func _test_shop_bias() -> void:
 	)
 
 
-## 满级货架 14 格仍能完整布局；溢出时升级失败但不扣钱。
+## 满级货架 11 格仍能完整布局；溢出时升级失败但不扣钱。
 func _test_large_shelf() -> void:
 	while Skills.can_upgrade_shop():
 		Skills.upgrade_shop()
-	failures += _check(Skills.shop_slots() == 14, "shop shelf caps at fourteen slots")
+	failures += _check(Skills.shop_slots() == 11, "shop shelf caps at eleven slots")
 	failures += _check(not Skills.upgrade_shop(), "upgrade is rejected once the shelf is full")
 
 	panel.visible = true
@@ -387,7 +388,7 @@ func _test_large_shelf() -> void:
 		if rect.position.x < 0.0 or rect.end.x > panel.size.x \
 				or rect.position.y < 0.0 or rect.end.y > panel.size.y:
 			inside = false
-	failures += _check(inside, "fourteen cards fit inside the screen across two rows")
+	failures += _check(inside, "eleven cards fit inside the screen across two rows")
 	panel.visible = false
 
 

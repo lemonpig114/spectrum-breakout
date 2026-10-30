@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="WeaponTraitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/WeaponTraitResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"wave"
+display_name = "水波"
+description = "缓慢推进一道水波，对接触的敌人最多造成三次 30% 伤害，附带轻柔推退；融合斩击追加两次各 15% 伤害。"
+brief = "柔推 · 追加判定"
+damage_scale = 0.3
+tags = Array[StringName]([&"area", &"soft_push"])

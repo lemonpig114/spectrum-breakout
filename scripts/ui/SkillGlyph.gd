@@ -15,6 +15,14 @@ static func draw_branch(
 	var r := maxf(2.0, radius)
 	var width := maxf(1.0, r * 0.13)
 	match branch:
+		&"blackhole":
+			canvas.draw_circle(center, r * 0.23, color)
+			for arm in 3:
+				var points := PackedVector2Array()
+				for i in 16:
+					var t := float(i) / 15.0
+					points.append(center + Vector2.from_angle(arm * TAU / 3.0 + t * 3.0) * r * lerpf(0.25, 0.95, t))
+				canvas.draw_polyline(points, color, width, true)
 		&"fire_rate":
 			_draw_bolt(canvas, center, r, color)
 		&"heavy":

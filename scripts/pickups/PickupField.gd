@@ -27,6 +27,9 @@ const COLLECT_RADIUS := 15.0
 const MERGE_RADIUS := 12.0
 const AGED_MERGE_RADIUS := 80.0
 const AGED_MERGE_DELAY := 10.0
+const CHEST_BLINK_AGE := 90.0
+const CHEST_EXPIRE_AGE := 100.0
+const CHEST_AUTO_OPEN_AGE := 3.0
 
 const MAGNET_START_SPEED := 260.0
 const AUTO_START_SPEED := 760.0
@@ -93,10 +96,20 @@ func _process(delta: float) -> void:
 	var player_alive := player != null and not RunState.is_dead
 	# 经验/金币一阶技能会放大磁吸半径，对两种掉落同时生效。
 	var magnet_radius := MAGNET_RADIUS * Skills.pickup_radius_multiplier()
+	var blinking_chest := false
+	var auto_open_chests := Skills.relic_count(&"epic_treasure_watch") > 0
 
 	for i in range(_item_pos.size() - 1, -1, -1):
 		_age[i] += delta
+		if _kind[i] == KIND_CHEST and auto_open_chests and player_alive and _age[i] >= CHEST_AUTO_OPEN_AGE:
+			_finish(i, true)
+			continue
 		if _state[i] == STATE_IDLE:
+			if _kind[i] == KIND_CHEST:
+				if _age[i] >= CHEST_EXPIRE_AGE:
+					_remove_item(i)
+					continue
+				blinking_chest = blinking_chest or _age[i] >= CHEST_BLINK_AGE
 			if player_alive:
 				var distance_sq := _item_pos[i].distance_squared_to(player.global_position)
 				if distance_sq <= magnet_radius * magnet_radius:
@@ -134,7 +147,7 @@ func _process(delta: float) -> void:
 
 	# 地面掉落只轻微上下浮动，20 Hz 足够；收集流光由各自 Line2D 更新。
 	# 密集波次 200 个地面物每帧重建绘制命令会成为明显主线程开销。
-	if not _item_pos.is_empty() and (_item_pos.size() <= 80 or force_full_detail):
+	if not _item_pos.is_empty() and (_item_pos.size() <= 80 or force_full_detail or blinking_chest):
 		_idle_visual_timer += delta
 		if _idle_visual_timer >= visual_redraw_step:
 			_idle_visual_timer = fmod(_idle_visual_timer, visual_redraw_step)
@@ -152,6 +165,9 @@ func _draw() -> void:
 		var size_scale := 1.0 + minf(1.3, 0.27 * sqrt(float(maxi(0, _merged_count[i] - 1))))
 
 		if _kind[i] == KIND_CHEST:
+			# 4 Hz 闪烁；密集掉落的静态模式下也更新，不创建额外节点或计时器。
+			if _age[i] >= CHEST_BLINK_AGE and fmod(_age[i] - CHEST_BLINK_AGE, 0.25) >= 0.125:
+				continue
 			var half := Vector2(6.4, 4.8)
 			draw_rect(
 				Rect2(center - half, half * 2.0),
@@ -206,6 +222,26 @@ func _draw() -> void:
 
 
 # ── 生成 ────────────────────────────────────────────────────────
+
+func save_data() -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
+	for i in _kind.size():
+		items.append({"kind": _kind[i], "amount": _amount[i], "position": _item_pos[i],
+			"age": _age[i], "merged": _merged_count[i], "state": _state[i], "speed": _speed[i]})
+	return items
+
+
+func restore_data(items: Array) -> void:
+	clear()
+	for item in items:
+		_append_item(int(item.kind), item.position, float(item.amount), 0.0)
+		var i := _kind.size() - 1
+		_age[i] = float(item.get("age", 0.0))
+		_merged_count[i] = int(item.get("merged", 1))
+		if int(item.get("state", STATE_IDLE)) == STATE_COLLECT:
+			_begin_collect(i, float(item.get("speed", MAGNET_START_SPEED)))
+	queue_redraw()
+
 
 func spawn_gold(world_position: Vector2, amount: int) -> void:
 	_spawn(KIND_GOLD, world_position, amount, Skills.gold_auto_collect())
@@ -407,10 +443,10 @@ func _update_streak(index: int, direction: Vector2, target: Vector2) -> void:
 	_lines[line_index].points = _streak_points
 
 
-func _finish(index: int) -> void:
+func _finish(index: int, collect_chest_resources: bool = false) -> void:
 	if _kind[index] == KIND_CHEST:
 		# 开箱音在 Skills.open_chest() 内统一播放，避免两条入口重复。
-		Skills.open_chest(_item_pos[index])
+		Skills.open_chest(_item_pos[index], collect_chest_resources)
 	else:
 		Audio.play(&"gold" if _kind[index] == KIND_GOLD else &"xp")
 		_credit(_kind[index], _amount[index])

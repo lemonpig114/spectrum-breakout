@@ -1,7 +1,7 @@
 class_name ShopPanel
 extends Control
 
-## 商人货架：基础 4 件遗物；每次捐款升级 +1 格，最多 14 格。
+## 商人货架：基础 4 件遗物；每次捐款升级 +1 格，最多 11 格。
 ## 面板在暂停状态下运行（process_mode = WHEN_PAUSED），关闭后通过 closed 交给 Main 收尾。
 
 signal closed
@@ -13,13 +13,16 @@ const CARD_COMPACT_HEIGHT := 194.0
 const CARD_MIN_WIDTH := 160.0
 const CARD_ROW_GAP := 18.0
 const REROLL_BASE := 8
-const REROLL_GROWTH := 4
-const PURCHASE_GROWTH := 5
+## 跨商店累计的付费刷新次数线性加成。
+const REROLL_GROWTH := 5
+## 当前商店已付费刷新次数的立方加成。
+const REROLL_CUBE := 2
+const PURCHASE_GROWTH := 0.03
 const HEAL_HEARTS := 1.5
 ## 捐款升级：越早越贵，价格随游戏时间非线性下降，最低 0；每级价格大幅增加。
 const UPGRADE_BASE := 60.0
 const UPGRADE_ZERO_TIME := 300.0
-const UPGRADE_GROWTH := 0.18
+const UPGRADE_GROWTH := 0.3
 
 const GOLD := Color(1.0, 0.82, 0.34, 1.0)
 const GOLD_DIM := Color(0.78, 0.62, 0.28, 1.0)
@@ -82,6 +85,33 @@ func open(player_node: Player) -> void:
 	queue_redraw()
 
 
+func save_data() -> Dictionary:
+	var ids: Array[StringName] = []
+	for relic in _offers:
+		ids.append(relic.id)
+	return {"offers": ids, "prices": _offer_prices.duplicate(), "sold": _sold.duplicate(),
+		"rerolls": _rerolls, "reroll_cost": _reroll_cost, "free_rerolls": _free_rerolls,
+		"heal_used": _heal_used, "shelf_bonus_used": _shelf_bonus_used}
+
+
+func restore_data(data: Dictionary, player_node: Player) -> void:
+	_player = player_node
+	_offers.clear()
+	for id in data.offers:
+		_offers.append(Skills.get_relic(StringName(id)))
+	_offer_prices.assign(data.prices)
+	_sold.assign(data.sold)
+	_rerolls = int(data.rerolls)
+	_reroll_cost = int(data.reroll_cost)
+	_free_rerolls = int(data.free_rerolls)
+	_heal_used = bool(data.heal_used)
+	_shelf_bonus_used = bool(data.shelf_bonus_used)
+	_display_gold = RunState.gold
+	_appear = 0.0
+	visible = true
+	queue_redraw()
+
+
 func close() -> void:
 	visible = false
 	_offers.clear()
@@ -122,16 +152,20 @@ func _restock(exclude: Array[StringName]) -> void:
 
 
 func _price_of(relic: RelicResource) -> int:
-	return relic.price + int(RunState.elapsed / 45.0) * 3 + Skills.shop_purchases * PURCHASE_GROWTH
+	if relic.id == &"epic_weapon_cache":
+		return 0
+	return roundi(relic.price * (1.0 + floorf(RunState.elapsed / 45.0) * 0.10 + Skills.shop_purchases * PURCHASE_GROWTH))
 
 
 func _heal_price() -> int:
 	return 14 + int(RunState.elapsed / 60.0) * 5
 
 
-## 每次刷新后，下次刷新价格线性增长；免费刷新也计入次数。
+## 刷新价格：基础 8 + 跨商店累计的付费刷新次数×5 + 当前商店付费刷新次数³×2。
+## 免费刷新不计入任何计数，因此不会推高价格。
 func _next_reroll_cost() -> int:
-	return REROLL_BASE + Skills.shop_rerolls * REROLL_GROWTH
+	return REROLL_BASE + Skills.shop_rerolls * REROLL_GROWTH \
+		+ _rerolls * _rerolls * _rerolls * REROLL_CUBE
 
 
 func _upgrade_price() -> int:
@@ -193,19 +227,21 @@ func _maybe_award_shelf_bonus() -> void:
 
 
 func _reroll() -> void:
+	var paid := false
 	if _free_rerolls > 0:
 		_free_rerolls -= 1
-	elif not RunState.spend_gold(_reroll_cost):
-		_flash("金币不足，还差 %d" % (_reroll_cost - RunState.gold), false)
-		return
+	else:
+		if not RunState.spend_gold(_reroll_cost):
+			_flash("金币不足，还差 %d" % (_reroll_cost - RunState.gold), false)
+			return
+		paid = true
 
-	var exclude: Array[StringName] = []
-	for relic in _offers:
-		exclude.append(relic.id)
-	_rerolls += 1
-	Skills.shop_rerolls += 1
+	# 只有付费刷新计入次数；免费刷新不推高下一次的价格。
+	if paid:
+		_rerolls += 1
+		Skills.shop_rerolls += 1
 	_reroll_cost = _next_reroll_cost()
-	_restock(exclude)
+	_restock([])
 	_squint_time = 0.0
 	_hover = -1
 	_flash("货架已刷新", true)
@@ -386,7 +422,7 @@ func _draw_shop_health(alpha: float) -> void:
 		hp = _player.health
 		max_hp = _player.max_health
 	var hearts := maxi(1, int(ceil(maxf(0.5, max_hp))))
-	var shields := maxi(0, Skills.guardian_shields)
+	var shields := maxi(0, Skills.displayed_shields())
 	if hearts + shields > 30:
 		_draw_shop_heart(Vector2(36, 30), 1.0, alpha)
 		var label := "%s / %s" % [_format_shop_health(hp), _format_shop_health(max_hp)]
@@ -448,10 +484,11 @@ func _draw_shop_shield(center: Vector2, alpha: float) -> void:
 		center + Vector2(8, 2), center + Vector2(0, 9),
 		center + Vector2(-8, 2), center + Vector2(-9, -7),
 	])
-	draw_colored_polygon(shield, Color(0.48, 0.8, 1.15, 0.5 * alpha))
+	var demonic := Skills.has_lucifer()
+	draw_colored_polygon(shield, Color(0.18, 0.01, 0.025, alpha) if demonic else Color(0.48, 0.8, 1.15, 0.5 * alpha))
 	var outline := shield.duplicate()
 	outline.append(shield[0])
-	draw_polyline(outline, Color(0.78, 1.0, 1.5, 0.95 * alpha), 1.5, true)
+	draw_polyline(outline, Color(1.7, 0.05, 0.14, alpha) if demonic else Color(0.78, 1.0, 1.5, 0.95 * alpha), 1.5, true)
 
 
 func _format_shop_health(value: float) -> String:
@@ -521,7 +558,7 @@ func _draw_card(
 ) -> void:
 	var sold := _sold[index]
 	var price := _offer_prices[index]
-	var affordable := RunState.gold >= price and not sold
+	var affordable := (price <= 0 or RunState.gold >= price) and not sold
 	var accent := _accent_of(relic)
 	var compact := rect.size.y < 214.0
 
@@ -595,16 +632,26 @@ func _draw_card(
 	var desc_font := 11 if narrow else (12 if compact else 13)
 	var desc_y := line_y + 22.0
 	var max_lines := 4 if compact else 6
-	draw_multiline_string(
-		_font,
-		rect.position + Vector2(14.0, desc_y),
-		relic.description,
-		HORIZONTAL_ALIGNMENT_CENTER,
-		rect.size.x - 28.0,
-		desc_font,
-		max_lines,
-		Color(1.0, 1.0, 1.0, 0.72 * alpha)
-	)
+	if relic.id == &"iridescent_lucifer":
+		desc_font = 8 if compact else 10
+		desc_y = line_y + 14.0
+		max_lines = 7
+		var lines := relic.description.split("\n")
+		var pitch := (rect.size.y - 44.0 - desc_y) / 6.0
+		for i in mini(7, lines.size()):
+			draw_string(_font, rect.position + Vector2(14, desc_y + i * pitch), lines[i],
+				HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 28, desc_font, Color(1, 1, 1, 0.72 * alpha))
+	else:
+		draw_multiline_string(
+			_font,
+			rect.position + Vector2(14.0, desc_y),
+			relic.description,
+			HORIZONTAL_ALIGNMENT_CENTER,
+			rect.size.x - 28.0,
+			desc_font,
+			max_lines,
+			Color(1.0, 1.0, 1.0, 0.72 * alpha)
+		)
 
 	draw_line(
 		rect.position + Vector2(16.0, rect.size.y - 38.0),
@@ -818,7 +865,7 @@ func _accent_of(relic: RelicResource) -> Color:
 		RelicResource.RARITY_CURSED:
 			return Color(1.0, 0.25, 0.3)
 		_:
-			return GOLD
+			return Color(0.65, 0.65, 0.65)
 
 
 func _rarity_name(relic: RelicResource) -> String:

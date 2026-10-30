@@ -193,13 +193,10 @@ func _ready() -> void:
 			"console spawns requested enemy count")
 		console._unhandled_key_input(tilde)
 		console._submit("w star")
-		failures += _check(main.weapon_choice_panel.visible and get_tree().paused and
-			player.weapon.has_form(&"star") and player.weapon.primary_form == &"sword",
-			"console weapon opens primary choice without auto switching")
-		var star_index: int = main.weapon_choice_panel._choices.find(&"star")
-		main.weapon_choice_panel._choose(star_index)
-		failures += _check(player.weapon.primary_form == &"star" and not get_tree().paused,
-			"console primary choice applies selected form")
+		failures += _check(not main.weapon_choice_panel.visible and player.weapon.has_form(&"star")
+			and player.weapon.primary_form == &"sword", "console acquisition uses fixed primary without a choice panel")
+		console._unhandled_key_input(tilde)
+		failures += _check(not get_tree().paused, "closing console resumes immediately after acquisition")
 		console._input.text = "rw sw"
 		console._complete()
 		failures += _check(console._input.text == "rw sword ", "console Tab completes remove weapon")

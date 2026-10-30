@@ -14,6 +14,21 @@ func _ready() -> void:
 		characters.size() >= 1 and characters[0].id == &"prism",
 		"characters are sorted by order"
 	)
+	var menu: Control = load("res://scenes/main_menu.tscn").instantiate()
+	add_child(menu)
+	var labels: Array[String] = []
+	for button in menu.buttons:
+		labels.append(button.text)
+	failures += _check(labels == ["开始游戏", "继续游戏", "设置", "图鉴", "退出"], "main menu has five requested actions")
+	menu._activate(2)
+	failures += _check(menu.settings.visible, "main menu opens settings without starting a run")
+	menu.settings.hide()
+	menu._activate(3)
+	failures += _check(menu.codex.visible, "main menu opens the existing codex")
+	menu.codex.hide()
+	menu._activate(0)
+	failures += _check(menu._next_scene == "res://scenes/character_select.tscn", "new game opens character selection")
+	menu.queue_free()
 
 	# 选择界面：唯一机体出击，写入 RunState 并请求主场景。
 	var select := load("res://scenes/character_select.tscn").instantiate() as Control
@@ -37,8 +52,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	boot.call("_finish")
 	failures += _check(
-		str(boot.get("_next_scene")) == "res://scenes/character_select.tscn",
-		"boot screen continues to character select"
+		str(boot.get("_next_scene")) == "res://scenes/main_menu.tscn",
+		"boot screen continues to main menu"
 	)
 	boot.queue_free()
 	await get_tree().process_frame

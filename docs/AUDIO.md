@@ -147,3 +147,9 @@ Kenney 素材只挑选了 20 个 OGG（约 260 KB），加上 7 个生成 WAV（
 - **Freesound**：<https://freesound.org/> — 逐个文件确认授权，筛选 CC0；不要默认整站可商用。
 
 生成器适合做更“电子/霓虹”的射击与切色音；Kenney 的撞击/硬币素材更适合命中、金币和开箱。
+
+## 武器音效更新（2026-10-29）
+
+新增 20 个内置合成音：basic/sword/scythe/wave/boomerang/sprite/star/lightning/cannon/black_hole 各有 weapon_<id> 发射或挥动音及 weapon_hit_<id> 命中音。保留外部同名 wav/ogg 优先约定。剑和镰刀使用不同长度的气流噪声。2026-10-30 根据用户反馈，基础弹已恢复旧 shoot/shoot_heavy 与 hit/weak_hit/crit/super_crit/hit_heavy；weapon_basic/weapon_hit_basic 仍保留在音库，但基础弹不再调用。新武器合成音暂作占位，待用户逐项选材。全音库共 44 项，仍由 20 个池化声部播放。
+
+黑洞从武器移出后，weapon_black_hole / weapon_hit_black_hole 音频ID保留，改由独立黑洞技能的生成与结束爆炸使用。

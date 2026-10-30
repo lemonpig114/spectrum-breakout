@@ -1,10 +1,11 @@
 extends Node
 
-## 前六分钟按时间阶段刷怪；300–360 秒为六边形围剿。
+## 按存活时间刷怪；540 秒起五种单一怪群每 15 秒轮换。
 ## 商店等“可发现事件”后续也挂在这里。
 
 const ENEMY_SCENE := preload("res://scenes/enemies/enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/enemies/square_boss.tscn")
+const HEX_BOSS_SCENE := preload("res://scenes/enemies/hex_boss.tscn")
 const MAX_ENEMIES := 80
 const MIN_PACK_SIZE := 3
 const MAX_PACK_SIZE := 5
@@ -28,6 +29,9 @@ var player: Node2D
 var merchant: Merchant
 var altar: Altar
 var boss: SquareBoss
+var hex_boss: HexBoss
+var _hex_boss_spawned := false
+var _endless_announced := false
 
 var _spawning := false
 var _spawn_timer := 0.8
@@ -50,6 +54,9 @@ func setup(world_node: Node2D) -> void:
 	merchant = null
 	altar = null
 	boss = null
+	hex_boss = null
+	_hex_boss_spawned = false
+	_endless_announced = false
 	_boss_spawned = false
 	_spawning = false
 	_spawn_timer = 0.8
@@ -96,6 +103,11 @@ func _process(delta: float) -> void:
 		_spawn_timer += _spawn_interval(phase)
 	if phase >= 4 and boss == null and not _boss_spawned:
 		spawn_boss_now()
+	if RunState.elapsed >= 420.0 and not _hex_boss_spawned:
+		spawn_hex_boss_now()
+	if RunState.elapsed >= 540.0 and not _endless_announced:
+		_endless_announced = true
+		EventBus.endless_mode_entered.emit()
 
 	_update_merchant(delta)
 	_update_altar(delta)
@@ -226,9 +238,17 @@ func spawn_phase(at_time: float = -1.0) -> int:
 		return 5
 	if seconds < 300.0:
 		return 6
-	if seconds < 360.0:
+	if seconds < 330.0:
 		return 7
-	return 8
+	if seconds < 360.0:
+		return 8
+	if seconds < 420.0:
+		return 9
+	if seconds < 480.0:
+		return 10
+	if seconds < 540.0:
+		return 11
+	return 12 + int((seconds - 540.0) / 15.0)
 
 
 func spawn_rate(at_time: float = -1.0) -> float:
@@ -236,6 +256,8 @@ func spawn_rate(at_time: float = -1.0) -> float:
 
 
 func _phase_rate(phase: int) -> float:
+	if phase >= 12:
+		return [12.0, 10.0, 8.0, 10.0, 8.0][(phase - 12) % 5]
 	match phase:
 		0: return 3.0
 		1: return 4.0
@@ -245,7 +267,9 @@ func _phase_rate(phase: int) -> float:
 		5: return 8.0
 		6: return 12.0
 		7: return 6.0
-		_: return 8.0
+		8: return 8.0
+		10: return 6.0
+		_: return 10.0
 
 
 func _spawn_batch_size(phase: int) -> int:
@@ -266,8 +290,12 @@ func _phase_type(phase: int, index: int) -> EnemyTypeResource:
 			var cycle := index % 12
 			wanted = &"ranged_plane" if cycle < 2 else (&"chaser_square" if cycle < 6 else (&"chaser_triangle" if cycle < 10 else &"chaser_round"))
 		7: wanted = &"chaser_hex"
-		8: wanted = [&"chaser_round", &"ranged_plane", &"chaser_square"][index % 3]
-		_: wanted = &"chaser_triangle"
+		8: wanted = &"chaser_hex" if index % 8 < 6 else &"chaser_round"
+		9: wanted = &"chaser_hex" if index % 10 < 8 else &"ranged_plane"
+		10: wanted = &"chaser_hex"
+		11: wanted = &"chaser_hex" if index % 10 < 6 else &"ranged_plane"
+		_:
+			wanted = [&"chaser_triangle", &"chaser_square", &"chaser_hex", &"chaser_round", &"ranged_plane"][(phase - 12) % 5] if phase >= 12 else &"chaser_triangle"
 	for enemy_type in _enemy_types:
 		if enemy_type.id == wanted:
 			return enemy_type
@@ -356,6 +384,22 @@ func spawn_boss_now(position_override: Vector2 = Vector2.INF) -> SquareBoss:
 	_boss_spawned = true
 	FX.shards(boss.global_position, RunState.color_of(boss.color_index), 18)
 	return boss
+
+
+func spawn_hex_boss_now(position_override: Vector2 = Vector2.INF) -> HexBoss:
+	if _hex_boss_spawned or world == null or not is_instance_valid(player):
+		return hex_boss
+	var data := ContentDB.get_enemy(&"hex_boss")
+	if data == null:
+		return null
+	hex_boss = HEX_BOSS_SCENE.instantiate() as HexBoss
+	hex_boss.configure(data, player, _rng.randi_range(0, ColorType.COUNT - 1))
+	hex_boss.max_health *= health_multiplier(420.0)
+	hex_boss.health = hex_boss.max_health
+	hex_boss.position = _boss_position() if position_override == Vector2.INF else position_override
+	world.add_child(hex_boss)
+	_hex_boss_spawned = true
+	return hex_boss
 
 
 func _boss_position() -> Vector2:
@@ -448,6 +492,9 @@ func health_multiplier(at_time: float = -1.0) -> float:
 	var seconds := RunState.elapsed if at_time < 0.0 else at_time
 	if seconds < 15.0:
 		return 0.8
+	if seconds >= 540.0:
+		# 无尽模式：基础 30 倍，X 从 5 起、每 100 秒 +1。
+		return 30.0 + 5.0 + floorf((seconds - 540.0) / 100.0)
 	match spawn_phase(at_time):
 		0, 1: return 1.0
 		2: return 1.5
@@ -456,7 +503,10 @@ func health_multiplier(at_time: float = -1.0) -> float:
 		5: return 3.5
 		6: return 5.0
 		7: return 6.0
-		_: return 6.0
+		8: return 7.0
+		9: return 10.0
+		11: return 20.0
+		_: return 15.0
 
 
 func enemy_damage_multiplier(at_time: float = -1.0) -> float:

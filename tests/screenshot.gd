@@ -47,7 +47,7 @@ func _ready() -> void:
 
 	var mode := ""
 	for candidate in [
-		"selector", "levelup", "panic", "fx", "supercrit", "switch", "blue", "soul_palette",
+		"selector", "levelup", "panic", "fx", "supercrit", "switch", "blue", "soul_palette", "xpbar",
 		"styles", "hearts", "pickups", "merchant", "merchant_arrow", "shop",
 		"shop_full", "pause", "pause_build", "pause_relics", "pause_damage", "pause_settings",
 		"pause_quit", "shotgun", "clone", "weapon", "console", "sword", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
@@ -86,6 +86,12 @@ func _ready() -> void:
 	elif mode == "switch":
 		await _setup_switch_demo(main)
 		await get_tree().create_timer(0.18).timeout
+	elif mode == "xpbar":
+		Director.stop()
+		main.player.controls_enabled = false
+		RunState.xp = roundi(RunState._xp_threshold(RunState.level) * 0.5)
+		main.hud_control.queue_redraw()
+		await get_tree().process_frame
 	elif mode == "blue":
 		Director.stop()
 		main.player.controls_enabled = false

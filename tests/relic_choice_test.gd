@@ -32,12 +32,12 @@ func _test_luck() -> void:
 	for relic in Skills.relics:
 		if relic.brief_description.is_empty() or relic.brief_description.contains("\n"):
 			briefs_complete = false
-	_check(briefs_complete, "all 52 relics provide a one-line brief description")
+	_check(briefs_complete, "all 55 relics provide a one-line brief description")
 	Skills.unlock(&"luck_1")
-	_check(Skills.luck() == 12 and is_equal_approx(Skills.chest_drop_chance(), 0.044), "first tier improves early resource drops")
+	_check(Skills.luck() == 12 and is_equal_approx(Skills.chest_drop_chance(), 0.0132), "first tier unlocks 1.32 percent chest drops")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.10), "base relic conversion is 10 percent")
 	Skills.unlock(&"luck_2")
-	_check(Skills.luck() == 24 and is_equal_approx(Skills.chest_drop_chance(), 0.06), "second tier reaches the 6 percent chest cap")
+	_check(Skills.luck() == 24 and is_equal_approx(Skills.chest_drop_chance(), 0.0144), "second tier reaches 1.44 percent chest drops")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.15), "second tier relic conversion is 15 percent")
 	Skills.unlock(&"luck_3")
 	_check(Skills.luck() == 40 and Skills.relic_count(&"epic_six_sided_die") == 1 and Skills.pending_relic_offers.size() == 1, "tier three gives luck now but queues its relic")
@@ -53,7 +53,7 @@ func _test_luck() -> void:
 	for i in 3:
 		Skills.grant_relic(&"legendary_rainbow_clover")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.20), "rainbow clovers cannot exceed the 20 percent conversion cap")
-	_check(Skills.chest_drop_chance() * Skills.chest_relic_chance() <= 0.012001, "late-game relic expectation is capped at 1.2 percent per kill")
+	_check(Skills.chest_drop_chance() * Skills.chest_relic_chance() <= 0.006001, "late-game relic expectation is capped at 0.6 percent per kill")
 
 
 func _test_choice_and_queue() -> void:

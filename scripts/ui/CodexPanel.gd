@@ -108,7 +108,13 @@ func build_entries() -> void:
 			source = "恶魔契约 / 祭坛 / 商店" if relic.side == &"demon" else "天使契约 / 祭坛 / 商店"
 		elif relic.lucky:
 			source = "解锁幸运后：商店 / 宝箱"
-		add_entry(1, relic.display_name, qualities[relic.rarity], relic.description + "\n\n来源：" + source, Color(0.95, 0.78, 0.42))
+		if relic.id == &"iridescent_lucifer":
+			source = "恶魔、巨化、暴击线全部点满：最高等级商店（唯一）"
+		elif relic.id == &"iridescent_michael":
+			source = "天使、暴击、弱点线全部点满：最高等级商店（唯一）"
+		elif relic.id == &"epic_weapon_cache":
+			source = "商店独立1%判定，固定免费（唯一）"
+		add_entry(1, relic.display_name, qualities[relic.rarity], relic.description + "\n\n来源：" + source, Skills._rarity_color(relic.rarity))
 	var enemies := ContentDB.get_enemies()
 	enemies.sort_custom(func(a, b): return a.unlock_time < b.unlock_time if a.unlock_time != b.unlock_time else a.display_name < b.display_name)
 	for enemy in enemies:
@@ -129,6 +135,8 @@ func build_entries() -> void:
 		if enemy.is_boss:
 			role = "180 秒登场的方形首领。增强附近方形、预告召唤、晋升换色，并以方锤和定点冲刺限制走位。"
 			accent = Color(1.0, 0.55, 0.82)
+		if enemy.id == &"hex_boss":
+			role = "420 秒登场。六条边独立配色与血量，只承受对应边的弱点伤害；无色及灵魂伤害按5%结算。破边使其余边回满、场上六边形加速且无敌5秒；余边不多于两条时死亡。边数越少移动和自转越快，冲刺会撞死小怪。每条边最终375000生命。"
 		var appearance := "首次出现  %d 秒" % int(enemy.unlock_time)
 		add_entry(2, enemy.display_name, "红 / 绿 / 蓝均可能",
 			role + "\n\n基础生命  %.0f\n移动速度  %.0f\n接触伤害  %.1f 心\n经验  %.1f    金币  %d\n%s\n\n颜色随机，与形状和职责独立。生命只在新刷出时随时间增长。" % [enemy.max_health, enemy.move_speed, enemy.contact_damage, enemy.xp_reward, enemy.gold_reward, appearance], accent)
@@ -140,7 +148,7 @@ func build_entries() -> void:
 	add_entry(3, "成长与拾取", "升级 / 宝箱 / 商人", "前四次升级需要 6 / 12 / 20 / 30 经验。\n金币与经验靠近后吸收；商人到达时会收集地面资源。\n遗物出现后可拾取或丢弃，5 秒未选择自动拾取。暂停时停止读条。", Color(0.5, 0.85, 1))
 	var pause_hint := "点右上角暂停查看本局技能与遗物。" if GameInput.touch_controls_active else \
 		"按 Esc 查看本局技能与遗物。"
-	add_entry(3, "技能路线", "19 条路线 · 76 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n%s" % pause_hint, Color(0.5, 0.85, 1))
+	add_entry(3, "技能路线", "20 条路线 · 80 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n%s" % pause_hint, Color(0.5, 0.85, 1))
 
 func add_entry(group: int, title: String, subtitle: String, body: String, accent: Color) -> void:
 	entries.append({"category": group, "title": title, "subtitle": subtitle, "body": body, "accent": Color(clampf(accent.r, 0, 1), clampf(accent.g, 0, 1), clampf(accent.b, 0, 1)).lerp(Color.WHITE, 0.30)})

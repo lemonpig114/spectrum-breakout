@@ -10,26 +10,31 @@ var burn := false
 var poison := false
 var ice := false
 var fragile := false
+var batched := false
 var _burn_pulse := 0.0
 var _poison_pulse := 0.0
 var _ice_pulse := 0.0
 var _pulse_redraw_accum := 0.0
+var _redraw_dirty := false
 const PULSE_TIME := 0.16
 const PULSE_REDRAW_STEP := 0.05
 
 
 func _ready() -> void:
+	batched = get_tree().get_first_node_in_group(&"enemy_overlay_renderer") != null
 	set_process(false)
 
 
-func set_statuses(has_burn: bool, has_poison: bool, has_ice: bool, has_fragile: bool = false) -> void:
-	if burn == has_burn and poison == has_poison and ice == has_ice and fragile == has_fragile:
+func set_statuses(has_burn: bool, has_poison: bool, has_ice: bool,
+		has_fragile: bool = false) -> void:
+	if burn == has_burn and poison == has_poison and ice == has_ice \
+			and fragile == has_fragile:
 		return
 	burn = has_burn
 	poison = has_poison
 	ice = has_ice
 	fragile = has_fragile
-	queue_redraw()
+	_request_redraw()
 
 
 func pulse_status(kind: StringName) -> void:
@@ -43,7 +48,7 @@ func pulse_status(kind: StringName) -> void:
 		_:
 			return
 	set_process(true)
-	queue_redraw()
+	_request_redraw()
 
 
 func _process(delta: float) -> void:
@@ -52,8 +57,9 @@ func _process(delta: float) -> void:
 	_ice_pulse = maxf(0.0, _ice_pulse - delta)
 	_pulse_redraw_accum += delta
 	var done := _burn_pulse <= 0.0 and _poison_pulse <= 0.0 and _ice_pulse <= 0.0
-	if _pulse_redraw_accum >= PULSE_REDRAW_STEP or done:
+	if _redraw_dirty or _pulse_redraw_accum >= PULSE_REDRAW_STEP or done:
 		_pulse_redraw_accum = 0.0
+		_redraw_dirty = false
 		queue_redraw()
 	if done:
 		set_process(false)
@@ -70,10 +76,12 @@ func refresh(value: float, max_value: float, enemy_radius: float, color: Color) 
 	body_radius = enemy_radius
 	tint = color
 	if needs_redraw:
-		queue_redraw()
+		_request_redraw()
 
 
 func _draw() -> void:
+	if batched:
+		return
 	if current < maximum and current > 0.0 and maximum > 0.0:
 		var width := body_radius * 2.0
 		var y := -body_radius - 8.0
@@ -103,6 +111,7 @@ func _draw_statuses() -> void:
 		x += 13.0
 	if fragile:
 		_draw_status_icon(x, y, &"fragile", 0.0)
+		x += 13.0
 
 
 func _draw_status_icon(x: float, y: float, kind: StringName, pulse: float) -> void:
@@ -130,4 +139,10 @@ func _draw_status_icon(x: float, y: float, kind: StringName, pulse: float) -> vo
 			draw_line(Vector2(-3.0, -4.0), Vector2(1.0, -1.0), c, 1.5, true)
 			draw_line(Vector2(1.0, -1.0), Vector2(-1.0, 1.0), c, 1.5, true)
 			draw_line(Vector2(-1.0, 1.0), Vector2(3.0, 4.0), c, 1.5, true)
+
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _request_redraw() -> void:
+	_redraw_dirty = true
+	set_process(true)

@@ -6,10 +6,15 @@ extends Node
 var touch_controls_active := false
 var mobile_move_direction := Vector2.ZERO
 var joystick_follow := false
+var show_fps := false
+const DISPLAY_SETTINGS_PATH := "user://display.cfg"
 const MOBILE_SETTINGS_PATH := "user://mobile_controls.cfg"
 
 
 func _ready() -> void:
+	var display := ConfigFile.new()
+	if display.load(DISPLAY_SETTINGS_PATH) == OK:
+		show_fps = bool(display.get_value("hud", "show_fps", false))
 	var config := ConfigFile.new()
 	if config.load(MOBILE_SETTINGS_PATH) == OK:
 		joystick_follow = bool(config.get_value("joystick", "follow", false))
@@ -27,6 +32,14 @@ func set_joystick_follow(enabled: bool) -> void:
 	var config := ConfigFile.new()
 	config.set_value("joystick", "follow", enabled)
 	config.save(MOBILE_SETTINGS_PATH)
+
+
+func set_show_fps(enabled: bool) -> void:
+	show_fps = enabled
+	var config := ConfigFile.new()
+	config.load(DISPLAY_SETTINGS_PATH)
+	config.set_value("hud", "show_fps", enabled)
+	config.save(DISPLAY_SETTINGS_PATH)
 
 func _enter_tree() -> void:
 	_register_keys(&"move_left", [KEY_A, KEY_LEFT])

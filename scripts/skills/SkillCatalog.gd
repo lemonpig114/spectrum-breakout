@@ -29,25 +29,25 @@ static func build() -> Array[SkillNodeResource]:
 		[_mod(&"fire_rate_mult", OP_ADD, 0.25, T_W)], [&"fire_rate"]
 	))
 	nodes.append(_node(
-		&"fire_2", "过载扳机", "+40% 射速\n-20% 伤害倍率",
+		&"fire_2", "过载扳机", "+40% 射速\n+5% 最终射速",
 		&"fire_rate", "射速", 2, pre_blade_t1,
 		[
 			_mod(&"fire_rate_mult", OP_ADD, 0.40, T_W),
-			_mod(&"damage_mult", OP_ADD, -0.20, T_W),
+			_mod(&"fire_rate_final", OP_MUL, 1.05, T_W),
 		], [&"fire_rate"]
 	))
 	nodes.append(_node(
-		&"fire_3", "弹幕扩散", "+30% 射速\n+7° 射击散布",
+		&"fire_3", "弹幕扩散", "+20% 射速，散布 +10°\n每次射击有 30% 概率追加高偏移弹\n追加 1 发，每 +50% 射速再 +1 发",
 		&"fire_rate", "射速", 3, pre_blade_t1,
 		[
-			_mod(&"fire_rate_mult", OP_ADD, 0.30, T_W),
-			_mod(&"spread_degrees", OP_FLAT, 7.0, T_W),
+			_mod(&"fire_rate_mult", OP_ADD, 0.20, T_W),
+			_mod(&"spread_degrees", OP_FLAT, 10.0, T_W),
 		], [&"fire_rate"]
 	))
 	nodes.append(_node(
-		&"fire_4", "无限扳机", "+20% 射速（最终乘算）\n射速上限提升至原先三倍",
+		&"fire_4", "无限扳机", "+20% 射速（最终乘算）\n射速上限提升至原先三倍\n弹射 +1，命中后转向附近另一名敌人",
 		&"fire_rate", "射速", 4, pre_blade_t4,
-		[_mod(&"fire_rate_final", OP_MUL, 1.20, T_W)], [&"fire_rate", &"fire_cap"]
+		[_mod(&"fire_rate_final", OP_MUL, 1.20, T_W), _mod(&"ricochet", OP_FLAT, 1.0, T_W)], [&"fire_rate", &"fire_cap"]
 	))
 
 	# ── 2. 高伤害线 ──────────────────────────────────────────────
@@ -424,10 +424,23 @@ static func build() -> Array[SkillNodeResource]:
 			_mod(&"move_speed", OP_ADD, -0.10, T_P),
 		], [&"giant"]))
 
+	var blackhole_t1: Array[StringName] = [&"blackhole_1"]
+	var blackhole_t4: Array[StringName] = [&"blackhole_2", &"blackhole_3"]
+	nodes.append(_node(&"blackhole_1", "引力核心", "首次 5 秒，之后每 20 秒释放黑洞\n持续 10 秒，吸收攻击成长，减速 40% 并撕扯",
+		&"blackhole", "黑洞", 1, [], [], [&"blackhole"]))
+	nodes.append(_node(&"blackhole_2", "坍缩", "黑洞结束时爆炸\n造成累计黑洞伤害的 300%",
+		&"blackhole", "黑洞", 2, blackhole_t1, [], [&"blackhole"]))
+	nodes.append(_node(&"blackhole_3", "引力撕扯", "吞噬旋转加快，减速提高至 70%\n撕扯伤害提高至黑洞伤害的 15%，拉力增强",
+		&"blackhole", "黑洞", 3, blackhole_t1, [], [&"blackhole"]))
+	nodes.append(_node(&"blackhole_4", "无尽贪婪", "黑洞体型成长上限提升至初始 8 倍\n可以吞噬敌方子弹",
+		&"blackhole", "黑洞", 4, blackhole_t4, [], [&"blackhole"]))
 	return nodes
 
 
 const RELIC_BRIEFS := {
+	&"iridescent_lucifer": "半心恶魔化，治疗转攻击，恶魔护盾破碎清场",
+	&"iridescent_michael": "暴击率提升，超暴击斩杀残血敌人与首领",
+	&"epic_weapon_cache": "绝对伤害 -15%，获得一把武器",
 	&"demon_pointed_vessel": "以生命换取攻击和射速",
 	&"demon_soul_blade": "射击有机会追加灵魂伤害",
 	&"angel_halo": "全面强化战斗属性",
@@ -477,6 +490,7 @@ const RELIC_BRIEFS := {
 	&"epic_prism": "弱点伤害倍率提升",
 	&"epic_water_candle": "敌人刷新量增加",
 	&"epic_travel_journal": "移动一段距离获得金币和经验",
+	&"epic_treasure_watch": "宝箱三秒后自动拾取，幸运提升",
 	&"epic_lucky_coin": "幸运与金币收益提升",
 	&"legendary_rainbow_clover": "幸运提升，更容易开出遗物",
 }
@@ -653,7 +667,7 @@ static func build_relics() -> Array[RelicResource]:
 			_mod(&"damage_mult", OP_ADD, 0.30, T_W),
 			_mod(&"body_scale", OP_ADD, 0.08, T_P),
 		],
-		65, false, 0.0, 0.0, false, false, 3, 1.0
+		110, false, 0.0, 0.0, false, false, 3, 1.0
 	))
 	relics.append(_relic(
 		&"rare_fate_dice", "命运骰子",
@@ -732,7 +746,8 @@ static func build_relics() -> Array[RelicResource]:
 	relics.append(_relic(
 		&"rare_high_bond", "高额债券", "拾取后金币 -1000，可负债\n每秒固定获得 12 金币",
 		&"", RelicResource.RARITY_RARE,
-		[_mod(&"gold_income", OP_FLAT, 12.0, T_P)], 100
+		[_mod(&"gold_income", OP_FLAT, 12.0, T_P)], 100,
+		false, 0.0, 0.0, false, false, 10
 	))
 	relics.append(_relic(
 		&"rare_bloody_bandage", "染血绷带", "受伤后无敌时间 +1 秒",
@@ -742,10 +757,11 @@ static func build_relics() -> Array[RelicResource]:
 
 	# ── 炬火：中后期构筑方向 ──
 	relics.append(_relic(
-		&"epic_weapon_cache", "武装密钥", "选择一件新武器；同种武器不会重复获得",
-		&"", RelicResource.RARITY_EPIC, [], 120,
+		&"epic_weapon_cache", "家传神兵", "绝对伤害 -15%\n选择一把新武器",
+		&"", RelicResource.RARITY_IRIDESCENT, [_mod(&"damage_final", OP_MUL, 0.85, T_W)], 0,
 		false, 0.0, 0.0, true
 	))
+	relics[-1].rule_tags.append(&"special")
 	relics.append(_relic(
 		&"epic_health_crystal", "生命水晶", "生命上限 +1 颗心",
 		&"", RelicResource.RARITY_EPIC,
@@ -791,6 +807,12 @@ static func build_relics() -> Array[RelicResource]:
 
 	# ── 高级幸运遗物：支撑“蓝到橙随机”的宝箱品质 ──
 	relics.append(_relic(
+		&"epic_treasure_watch", "寻宝怀表", "幸运 +5\n宝箱掉落 3 秒后自动打开并拾取奖励",
+		&"", RelicResource.RARITY_EPIC,
+		[_mod(&"luck", OP_FLAT, 5.0, T_P)],
+		110, false, 0.0, 0.0, true
+	))
+	relics.append(_relic(
 		&"epic_six_sided_die", "六面骰",
 		"每次升级的技能选择可免费重选 1 次\n每次进入商店，免费刷新 +1 次",
 		&"", RelicResource.RARITY_EPIC,
@@ -814,6 +836,16 @@ static func build_relics() -> Array[RelicResource]:
 		140, false, 0.0, 0.0, false, true
 	))
 
+	relics.append(_relic(&"iridescent_lucifer", "路西法",
+		"生命半心，无法获得普通护盾\n治疗每心+10攻击；上限转恶魔盾\n每层恶魔盾+10%伤害，破碎清场\n无盾30秒生成一层，首领免清场\n暴击率+100%，暴击伤害+100%\n绝对伤害+100%，伤害倍率+300%\n移速+100%",
+		&"", RelicResource.RARITY_IRIDESCENT, [
+			_mod(&"crit_chance", OP_FLAT, 1.0, T_P), _mod(&"crit_damage", OP_FLAT, 1.0, T_P),
+			_mod(&"damage_final", OP_MUL, 2.0, T_W), _mod(&"damage_mult", OP_ADD, 3.0, T_W),
+			_mod(&"move_speed", OP_ADD, 1.0, T_P)], 300, false, 0.0, 0.0, true))
+	relics.append(_relic(&"iridescent_michael", "米迦勒",
+		"暴击率+50%\n超暴击斩杀生命低于60%的普通敌人、低于30%的首领",
+		&"", RelicResource.RARITY_IRIDESCENT,
+		[_mod(&"crit_chance", OP_FLAT, 0.5, T_P)], 300, false, 0.0, 0.0, true))
 	return relics
 
 
@@ -961,6 +993,8 @@ static func _branch_color(branch: StringName) -> Color:
 			return Color(0.42, 1.0, 0.46)
 		&"gold":
 			return Color(1.0, 0.80, 0.20)
+		&"blackhole":
+			return Color(0.64, 0.46, 0.85)
 		&"soul":
 			return Color(0.76, 0.52, 1.0)
 		&"splash":

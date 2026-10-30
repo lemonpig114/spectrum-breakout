@@ -12,10 +12,12 @@ var _process_sum := 0.0
 var _physics_sum := 0.0
 var _process_max := 0.0
 var _physics_max := 0.0
+var _last_frame_us := 0
 
 
 func setup(main: Node) -> void:
 	_main = main
+	EventBus.game_paused.connect(func(_paused: bool): _last_frame_us = 0)
 	var path := "user://performance_session.csv"
 	_file = FileAccess.open(path, FileAccess.WRITE)
 	if _file == null:
@@ -31,6 +33,10 @@ func _process(delta: float) -> void:
 		return
 	if delta <= 0.0:
 		return
+	var now := Time.get_ticks_usec()
+	if _last_frame_us > 0:
+		delta = float(now - _last_frame_us) / 1000000.0
+	_last_frame_us = now
 	_elapsed += delta
 	_frames += 1
 	var fps := 1.0 / delta
@@ -59,7 +65,7 @@ func _process(delta: float) -> void:
 			pickups = pickup_field.total_count()
 	_file.store_csv_line(PackedStringArray([
 		"%.1f" % RunState.elapsed,
-		"%.1f" % (_fps_sum / float(_frames)),
+		"%.1f" % (float(_frames) / maxf(0.000001, _elapsed)),
 		"%.1f" % _fps_min,
 		"%.1f" % _frame_max_ms,
 		"%.2f" % (_process_sum / float(_frames)),

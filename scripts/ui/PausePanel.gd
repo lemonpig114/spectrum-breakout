@@ -18,7 +18,7 @@ const SKILL_BRANCH_ORDER: Array[StringName] = [
 	&"fire_rate", &"heavy", &"energy", &"speed",
 	&"demon", &"angel", &"xp", &"gold",
 	&"soul", &"splash", &"weakness", &"crit",
-	&"shotgun", &"luck", &"fragile", &"sprite", &"clone", &"circle", &"giant",
+	&"shotgun", &"luck", &"fragile", &"sprite", &"clone", &"circle", &"giant", &"blackhole",
 ]
 const TIER_NAMES: Array[String] = ["I", "II", "III", "IV"]
 const RARITY_NAMES: Array[String] = ["尘灰", "微光", "炬火", "璀璨", "幻彩", "诅咒"]
@@ -854,6 +854,12 @@ func _draw_settings(layout: Dictionary, alpha: float) -> void:
 	_text_right(state_text, mute_rect.end.x - 14.0, mute_rect.position.y + 25.0, 11,
 		Color(GOLD.r, GOLD.g, GOLD.b, 0.82 * alpha) if not Audio.is_muted() else Color(1.0, 1.0, 1.0, 0.38 * alpha), true)
 	var tip_rect := _settings_tip_rect(layout)
+	var fps_rect := _fps_setting_rect(layout)
+	draw_rect(fps_rect, Color(0.055, 0.07, 0.10, 0.92 * alpha))
+	draw_rect(fps_rect, Color(1.0, 1.0, 1.0, (0.2 if _settings_hover == 5 else 0.07) * alpha), false, 1.0)
+	_text("显示 FPS", fps_rect.position + Vector2(14, 25), 11, Color(1, 1, 1, 0.7 * alpha))
+	_text_right("开启" if GameInput.show_fps else "关闭", fps_rect.end.x - 14, fps_rect.position.y + 25,
+		11, Color(GOLD.r, GOLD.g, GOLD.b, 0.85 * alpha), true)
 	if GameInput.touch_controls_active:
 		var joystick_rect := _joystick_setting_rect(layout)
 		draw_rect(joystick_rect, Color(0.055, 0.07, 0.10, 0.92 * alpha))
@@ -1110,7 +1116,7 @@ func _hints_rect(layout: Dictionary) -> Rect2:
 func _settings_rect(layout: Dictionary) -> Rect2:
 	return Rect2(
 		Vector2(layout["right_x"], layout["body_y"] + 38.0),
-		Vector2(layout["right_w"], 174.0)
+		Vector2(layout["right_w"], 222.0)
 	)
 
 
@@ -1145,6 +1151,11 @@ func _settings_tip_rect(layout: Dictionary) -> Rect2:
 		Vector2(settings.position.x, settings.end.y + (92.0 if GameInput.touch_controls_active else 12.0)),
 		Vector2(settings.size.x, 50.0)
 	)
+
+
+func _fps_setting_rect(layout: Dictionary) -> Rect2:
+	var settings := _settings_rect(layout)
+	return Rect2(settings.position + Vector2(16, 174), Vector2(settings.size.x - 32, 40))
 
 
 func _joystick_setting_rect(layout: Dictionary) -> Rect2:
@@ -1260,6 +1271,8 @@ func _update_hover(point: Vector2) -> void:
 				_settings_hover = i
 		if _mute_rect(layout).has_point(point):
 			_settings_hover = 2
+		if _fps_setting_rect(layout).has_point(point):
+			_settings_hover = 5
 		if GameInput.touch_controls_active and _joystick_setting_rect(layout).has_point(point):
 			_settings_hover = 4
 		if _right_button_rects(layout, 1)[0].has_point(point):
@@ -1310,6 +1323,12 @@ func _click(point: Vector2) -> void:
 			accept_event()
 			Audio.play(&"ui_click")
 			Audio.toggle_muted()
+			queue_redraw()
+			return
+		if _fps_setting_rect(layout).has_point(point):
+			accept_event()
+			Audio.play(&"ui_click")
+			GameInput.set_show_fps(not GameInput.show_fps)
 			queue_redraw()
 			return
 		if GameInput.touch_controls_active and _joystick_setting_rect(layout).has_point(point):
@@ -1525,7 +1544,7 @@ func _relic_accent(relic: RelicResource) -> Color:
 		RelicResource.RARITY_CURSED:
 			return Color(1.0, 0.25, 0.3)
 		_:
-			return Color(0.76, 0.70, 0.58)
+			return Color(0.65, 0.65, 0.65)
 
 
 func _rarity_name(rarity: int) -> String:
