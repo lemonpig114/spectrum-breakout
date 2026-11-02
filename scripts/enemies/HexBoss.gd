@@ -173,7 +173,7 @@ func _take_damage_impl(context: DamageContext) -> void:
 	if point.is_equal_approx(global_position) and is_instance_valid(target):
 		point = target.global_position
 	var index := edge_at(point)
-	if not neutral and not context.has_tag(&"super_crit") and not ColorType.beats(context.color_index, edge_colors[index]):
+	if not neutral and not context.has_tag(&"super_crit") and not context.has_tag(&"guaranteed_weakness") and not ColorType.beats(context.color_index, edge_colors[index]):
 		_resist()
 		return
 	_apply_vulnerability_for_attack()
@@ -181,7 +181,7 @@ func _take_damage_impl(context: DamageContext) -> void:
 	var dealt := minf(edge_health[index], amount)
 	Skills.record_projectile_damage(context, dealt)
 	var style := FloatingTextLayer.STYLE_NORMAL
-	if context.has_tag(&"blackhole_explosion"):
+	if context.has_tag(&"element_origin") or context.has_tag(&"blackhole_explosion"):
 		style = FloatingTextLayer.STYLE_BURST
 	elif context.has_tag(&"super_crit"):
 		style = FloatingTextLayer.STYLE_SUPER_CRIT
@@ -191,6 +191,7 @@ func _take_damage_impl(context: DamageContext) -> void:
 		style = FloatingTextLayer.STYLE_WEAKNESS
 	var tint := Color(0.88, 0.88, 0.88) if neutral else RunState.color_of(context.color_index)
 	FX.damage_number(to_global((_vertices[index] + _vertices[(index + 1) % _vertices.size()]) * 0.5), amount, tint, false, style, _damage_caption(context))
+	Skills.element_combat.on_attack(self,context)
 	_damage_edge(index, amount)
 
 
@@ -198,7 +199,7 @@ func take_true_damage(amount: float, source_key: StringName = &"skill:soul_1") -
 	if is_dead:
 		return
 	var index := edge_at(target.global_position if is_instance_valid(target) else global_position)
-	var applied := maxf(0.0, amount) * 0.05 * (1.0 + vulnerability)
+	var applied := maxf(0.0, amount) * 0.05 * (1.0 + vulnerability)*(1.0+Skills.sniper_damage_bonus(global_position))
 	Skills.record_damage(source_key, minf(edge_health[index], applied))
 	FX.damage_number(global_position + Vector2(0, -radius), applied, Color(2.4, 2.0, 3.0), false, FloatingTextLayer.STYLE_SOUL)
 	_damage_edge(index, applied)
@@ -211,7 +212,7 @@ func _apply_dot_tick() -> void:
 	_burn_pending = maxf(0.0, _burn_pending - burn)
 	var poison := _poison_dps * 0.5
 	var index := clampi(_last_edge, 0, edge_health.size() - 1)
-	var total := (burn + poison) * (1.0 + vulnerability)
+	var total := (burn + poison) * (1.0 + vulnerability)*(1.0+Skills.sniper_damage_bonus(global_position))
 	if total > 0.0:
 		var actual := minf(edge_health[index], total)
 		Skills.record_damage(&"skill:weak_3_burn", actual * burn / (burn + poison))

@@ -63,6 +63,7 @@ func _input(event: InputEvent) -> void:
 		if touch.pressed:
 			if not _can_play():
 				return
+			if _is_ui_point(touch.position): return
 			if _move_index < 0 and _is_move_zone(touch.position):
 				_begin_move(touch.index, touch.position)
 				get_viewport().set_input_as_handled()

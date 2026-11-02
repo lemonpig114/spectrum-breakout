@@ -8,6 +8,7 @@ var damage := 10.0
 var color_index := ColorType.RED
 var lifetime := 1.0
 var pierce := 0
+var infinite_pierce := false
 var ricochets := 0
 var projectile_size := 5.0
 var projectile_sides := 4
@@ -17,8 +18,14 @@ var source_kind: StringName = &""
 var damage_bonus_ratios: Dictionary = {}
 var damage_snapshot: RefCounted
 
+var range_limit := 600.0
+var distance_traveled := 0.0
+var _return_extension := -1.0
+var _sprite_limited := false
+var _cannon_outbound_exploded := false
 var _age := 0.0
 var _released := false
+var _pending_retire := false
 var _owns_shape := false
 var _hit_ids: Dictionary = {}
 var active_index := -1
@@ -84,12 +91,13 @@ func setup(
 	orbiting = false
 	orbit_exhausted = false
 	scale = Vector2.ONE
-	weapon = weapon_runtime
+	weapon = weapon_runtime.attack_snapshot() if weapon_runtime != null else null
 	form_at_fire = form_override if form_override != &"" else (weapon_runtime.primary_form if weapon_runtime != null else &"")
 	budget = attack_budget
 	shot_scale = damage_scale
 	can_split = split_allowed
 	is_derived = weapon_runtime != null and not split_allowed and shot_source in [&"weapon:star", &"clone"]
+	_cannon_outbound_exploded = false
 	chain_triggered = false
 	sword_triggered = false
 	_returning = false
@@ -140,6 +148,9 @@ func setup(
 	# 主形态的伤害倍率不取消穿透；只有裂片、分身等派生弹不继承穿透。
 	pierce = 0 if source_kind == &"clone" or (weapon_runtime == null and damage_scale < 0.99) \
 		or (weapon_runtime != null and not split_allowed) else int(stats.get_value(&"pierce"))
+	infinite_pierce = heavy and form_at_fire not in [&"sprite", &"cannon"]
+	if heavy and form_at_fire == &"sprite":
+		pierce += 2
 	ricochets = maxi(0, int(stats.get_value(&"ricochet")))
 	if form_at_fire == &"cannon":
 		pierce = 0
@@ -156,14 +167,25 @@ func setup(
 		batch_rendered = true
 		batch_sprite = true
 
+	range_limit = weapon.attack_range(form_at_fire, heavy) if weapon != null else maxf(0.0, stats.get_value(&"range"))
+	if weapon == null and range_limit <= 0.0:
+		range_limit = 600.0 * (3.0 if heavy else 1.0)
+	range_limit = owner_manager.clip_weapon_range(origin,direction,range_limit)
+	distance_traveled = 0.0
+	_return_extension = -1.0
+	_sprite_limited = form_at_fire == &"sprite" or (weapon != null and weapon.has_form(&"sprite"))
+	if heavy:
+		lifetime *= 3.0
 	_age = 0.0
 	_released = false
+	_pending_retire = false
 	_hit_ids.clear()
 	visible = true
-	collision_mask = 2
-	_shape.set_deferred("disabled", false)
-	set_physics_process(true)
-	_apply_shape()
+	collision_mask = 0 if manager.centralized_collision else 2
+	if not manager.centralized_collision:
+		_shape.set_deferred("disabled", false)
+		_apply_shape()
+	set_physics_process(not manager.centralized_collision)
 	_request_redraw()
 
 
@@ -175,6 +197,7 @@ func _physics_process(delta: float) -> void:
 
 func _simulate_projectile(delta: float) -> void:
 	_age += delta
+	var previous_position := global_position
 	var primary := form_at_fire
 	if not _returning and primary != &"sprite" \
 			and weapon != null and weapon.has_form(&"sprite"):
@@ -185,13 +208,16 @@ func _simulate_projectile(delta: float) -> void:
 			if target != null:
 				direction = direction.slerp((target.global_position - global_position).normalized(), 0.28).normalized()
 				rotation = direction.angle()
-	if primary == &"cannon":
+	if primary == &"cannon" and not _returning and _return_extension < 0.0:
 		speed = move_toward(speed, 0.0, 360.0 * delta)
 		if speed <= 32.0:
 			manager.combat.queue_cannon_explosion(self, global_position)
-			_release()
-			return
-	elif primary == &"sprite" and not _returning:
+			if weapon != null and weapon.has_secondary(&"boomerang"):
+				_begin_return()
+			else:
+				_retire_after_movement()
+				return
+	elif primary == &"sprite" and not _returning and _return_extension < 0.0:
 		if _sprite_dashing:
 			_sprite_dash_left -= speed * delta
 			if _sprite_dash_left <= 0.0:
@@ -204,19 +230,18 @@ func _simulate_projectile(delta: float) -> void:
 			if speed <= 75.0 and _sprite_seek_cooldown <= 0.0:
 				_sprite_seek_cooldown = 0.18
 				_seek_sprite_target()
-	if weapon != null and weapon.has_form(&"boomerang") and primary != &"cannon":
+	if weapon != null and weapon.has_form(&"boomerang"):
 		if _returning:
 			if manager.combat.player == null or not is_instance_valid(manager.combat.player):
-				_release()
+				_retire_after_movement()
 				return
 			var to_player: Vector2 = manager.combat.player.global_position - global_position
 			if to_player.length() <= 20.0:
-				_release()
+				_retire_after_movement()
 				return
 			direction = to_player.normalized()
 			rotation = direction.angle()
-		elif global_position.distance_to(_outward_origin) >= 340.0:
-			_begin_return()
+
 	global_position += direction * speed * delta
 	if primary == &"sprite" and not _sprite_dashing:
 		var curve := _sprite_curve_amplitude * sin(_age * _sprite_curve_frequency)
@@ -230,9 +255,41 @@ func _simulate_projectile(delta: float) -> void:
 			while _sprite_trail.get_point_count() > 6:
 				_sprite_trail.remove_point(0)
 
+	var visible_area := manager.projectile_visible_bounds()
+	var reached_screen_edge := not visible_area.has_point(global_position)
+	if reached_screen_edge: global_position = global_position.clamp(visible_area.position,visible_area.end-Vector2.ONE*0.01)
+	var step := previous_position.distance_to(global_position)
+	distance_traveled += step
+	if not _returning:
+		if _return_extension >= 0.0:
+			_return_extension -= step
+			if _return_extension <= 0.0:
+				_start_return()
+		elif distance_traveled >= range_limit:
+			if weapon != null and weapon.has_form(&"boomerang"):
+				_begin_return()
+			else:
+				if primary == &"cannon":
+					manager.combat.queue_cannon_explosion(self, global_position)
+				_retire_after_movement()
+				return
+	if reached_screen_edge:
+		if weapon != null and weapon.has_form(&"boomerang"):
+			_start_return()
+		else:
+			_retire_after_movement()
+			return
 	var max_age := 4.0 if weapon != null and weapon.has_form(&"boomerang") else lifetime
-	if _age >= max_age \
-			or not RunState.arena_rect.grow(64.0).has_point(global_position):
+	if _sprite_limited:
+		max_age = minf(max_age, 1.0 if manager._active.size() > 100 else 2.0)
+	if _age >= max_age or not RunState.arena_rect.grow(64.0).has_point(global_position):
+		_retire_after_movement()
+
+
+func _retire_after_movement() -> void:
+	if manager._moving_projectile:
+		_pending_retire = true
+	else:
 		_release()
 
 
@@ -255,15 +312,16 @@ func _closest_sprite_target(reach: float) -> Node2D:
 
 
 func _begin_return() -> void:
+	if not _returning and _return_extension < 0.0:
+		_return_extension = 36.0
+		speed = maxf(speed, 360.0)
+
+
+func _start_return() -> void:
 	if _returning:
 		return
 	_returning = true
 	_return_hit_ids.clear()
-	if form_at_fire == &"boomerang" and weapon != null and weapon.has_form(&"sword"):
-		manager.combat.enqueue({"kind": &"sword", "origin": global_position,
-			"direction": direction, "damage": damage * 0.6,
-			"color": color_index, "heavy": false, "weapon": weapon,
-			"budget": budget, "secondary": true, "clone": source_kind == &"clone"})
 
 
 func _on_body_entered(body: Node2D) -> void:
@@ -287,9 +345,11 @@ func _on_body_entered(body: Node2D) -> void:
 		_hit_ids[instance_id] = true
 
 	var first_hit := _hit_ids.size() == 1 and not _returning
-	var last_hit := ((_sprite_attacks_left <= 1 if form_at_fire == &"sprite" else pierce <= 0) and ricochets <= 0) or _returning
+	var last_hit := not infinite_pierce and ((_sprite_attacks_left <= 1 if form_at_fire == &"sprite" else pierce <= 0) and ricochets <= 0) or (_returning and not infinite_pierce)
 	manager.combat.on_projectile_hit(self, enemy, first_hit, last_hit)
 	if orbiting:
+		if infinite_pierce:
+			return
 		if form_at_fire == &"sprite":
 			_sprite_attacks_left -= 1
 			orbit_exhausted = _sprite_attacks_left <= 0
@@ -318,6 +378,8 @@ func _on_body_entered(body: Node2D) -> void:
 			if _sprite_trail != null:
 				_sprite_trail.width = 2.5
 			_request_redraw()
+		return
+	if infinite_pierce:
 		return
 	if pierce > 0:
 		pierce -= 1
@@ -381,7 +443,8 @@ func _apply_shape() -> void:
 		_shape.shape = circle
 		_owns_shape = true
 
-	circle.radius = maxf(3.0, projectile_size * 0.9)
+	var wanted := maxf(3.0, projectile_size * 0.9)
+	if not is_equal_approx(circle.radius, wanted): circle.radius = wanted
 
 
 func _setup_sprite_trail() -> void:

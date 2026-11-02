@@ -5,6 +5,7 @@ extends Control
 ## 使用独立的暂停原因 &"manual_pause"，与升级/商店互不干扰。
 ## 面板本身在 paused 状态下继续处理输入与绘制。
 
+signal weapon_switch_requested
 signal closed
 ## 「退出」不再关闭游戏，而是交给 Main 回到机体选择界面。
 signal menu_requested
@@ -18,7 +19,7 @@ const SKILL_BRANCH_ORDER: Array[StringName] = [
 	&"fire_rate", &"heavy", &"energy", &"speed",
 	&"demon", &"angel", &"xp", &"gold",
 	&"soul", &"splash", &"weakness", &"crit",
-	&"shotgun", &"luck", &"fragile", &"sprite", &"clone", &"circle", &"giant", &"blackhole",
+	&"shotgun", &"luck", &"fragile", &"sprite", &"clone", &"circle", &"giant", &"blackhole", &"element",
 ]
 const TIER_NAMES: Array[String] = ["I", "II", "III", "IV"]
 const RARITY_NAMES: Array[String] = ["尘灰", "微光", "炬火", "璀璨", "幻彩", "诅咒"]
@@ -54,6 +55,15 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	visible = false
 	_refresh_fonts()
+	var switch := Button.new()
+	switch.text = "切换主武器"
+	switch.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	switch.offset_left = 24
+	switch.offset_right = 224
+	switch.offset_top = -56
+	switch.offset_bottom = -16
+	switch.pressed.connect(func(): weapon_switch_requested.emit())
+	add_child(switch)
 
 
 func open() -> void:
@@ -192,7 +202,7 @@ func _draw() -> void:
 	elif _tab == 1:
 		_draw_relic_grid(layout, ease)
 	else:
-		_draw_damage_stats(layout, ease)
+		_draw_character_stats(layout, ease)
 	_draw_detail(layout, ease)
 	_draw_right_column(layout, ease)
 	_draw_footer(layout, ease)
@@ -282,7 +292,7 @@ func _draw_header(layout: Dictionary, alpha: float) -> void:
 
 func _draw_tabs(layout: Dictionary, alpha: float) -> void:
 	var rects := _tab_rects(layout)
-	var labels := ["技能路线", "遗物清单", "伤害统计"]
+	var labels := ["技能路线", "遗物清单", "角色属性"]
 	var badges := ["%d / %d" % [Skills.unlocked_count(), Skills.nodes.size()], "%d 件" % Skills.owned_relics.size(), "本局"]
 
 	for i in rects.size():
@@ -309,7 +319,7 @@ func _draw_tabs(layout: Dictionary, alpha: float) -> void:
 	var hint_right: float = layout["left_x"] + layout["left_w"]
 	_text_right(
 		("%d 条已选路线 · %d 个节点 · %s查看详情" % [_branch_cache.size(), Skills.unlocked_count(),
-			"点按" if GameInput.touch_controls_active else "悬停"]) if _tab == 0 else ("本局已拥有遗物" if _tab == 1 else "实际伤害与单项增伤估算"),
+			"点按" if GameInput.touch_controls_active else "悬停"]) if _tab == 0 else ("本局已拥有遗物" if _tab == 1 else "当前生效属性 · 暴击不含目标与弱点条件加成"),
 		hint_right,
 		rects[0].position.y + 25.0,
 		10,
@@ -646,42 +656,48 @@ func _draw_detail(layout: Dictionary, alpha: float) -> void:
 		_text_right("持有 ×%d" % count, rect.end.x - 14.0, rect.position.y + 32.0, 12,
 			Color(accent.r, accent.g, accent.b, 0.82 * alpha), true)
 	else:
-		_text("统计口径", rect.position + Vector2(18.0, 28.0), 13, Color(GOLD.r, GOLD.g, GOLD.b, 0.9 * alpha), true)
-		_text("直接伤害只计敌人实际损失的生命，击杀溢出不计。", rect.position + Vector2(18.0, 51.0), 10,
-			Color(1.0, 1.0, 1.0, 0.68 * alpha))
-		_text("增伤为逐项移除后的估算，不可相加；射速、弹数等暂未分摊。", rect.position + Vector2(18.0, 72.0), 10,
-			Color(1.0, 1.0, 1.0, 0.52 * alpha))
+		_text("属性说明", rect.position + Vector2(18,28),13,Color(GOLD,alpha),true)
+		_text("武器伤害为单段非暴击伤害；颜色克制、护甲和目标状态另行结算。",rect.position+Vector2(18,51),10,Color(1,1,1,alpha*0.7))
+		_text("射程是世界单位；镰刀对应扫击半径。临时增益随当前状态变化。",rect.position+Vector2(18,72),10,Color(1,1,1,alpha*0.55))
 
 
-func _draw_damage_stats(layout: Dictionary, alpha: float) -> void:
-	var main: Rect2 = layout["main"]
-	var rows: Array[Dictionary] = []
-	for key in Skills.damage_totals:
-		rows.append({"key": key, "value": float(Skills.damage_totals[key]), "estimated": false})
-	for key in Skills.damage_bonus_estimates:
-		rows.append({"key": key, "value": float(Skills.damage_bonus_estimates[key]), "estimated": true})
-	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a["value"]) > float(b["value"])
-	)
-	if rows.is_empty():
-		_text("尚未造成伤害", main.position + Vector2(18.0, 34.0), 14,
-			Color(1.0, 1.0, 1.0, 0.55 * alpha))
-		return
-	var row_h := 32.0
-	var visible_count := maxi(1, int(main.size.y / row_h))
-	_damage_scroll = clampi(_damage_scroll, 0, maxi(0, rows.size() - visible_count))
-	for index in range(_damage_scroll, mini(rows.size(), _damage_scroll + visible_count)):
-		var row := rows[index]
-		var y := main.position.y + float(index - _damage_scroll) * row_h
-		var rect := Rect2(main.position.x, y, main.size.x - 4.0, row_h - 3.0)
-		draw_rect(rect, Color(0.045, 0.061, 0.086, 0.82 * alpha))
-		var estimated := bool(row["estimated"])
-		var label := Skills.damage_source_name(row["key"])
-		_text(("增伤 · " if estimated else "伤害 · ") + label,
-			Vector2(rect.position.x + 12.0, y + 20.0), 11,
-			Color(0.75, 0.82, 0.96, 0.78 * alpha) if estimated else Color(1.0, 1.0, 1.0, 0.88 * alpha))
-		_text_right("%.0f" % float(row["value"]), rect.end.x - 12.0, y + 20.0, 12,
-			Color(GOLD.r, GOLD.g, GOLD.b, 0.9 * alpha), true)
+func character_stat_rows() -> Array:
+	var p := get_tree().get_first_node_in_group(&"player") as Player
+	if p == null: return []
+	var w := p.weapon
+	var data := w.primary_data()
+	var rate := p.effective_fire_rate()
+	var raw := w.stats.get_value(&"damage")
+	var mult := w.stats.get_value(&"damage_mult") + Skills.lens_damage_bonus(p.color_index) + Skills.cracked_armor_bonus()
+	var final_mult := w.stats.get_value(&"damage_final")
+	var hit := raw*mult*final_mult*(data.damage_scale if data != null else 1.0)*(1.2 if w.has_secondary(&"sword") else 1.0)
+	if w.primary_form == &"sprite": hit *= p.stats.get_value(&"summon_damage")
+	return [
+		["主武器",data.display_name if data != null else "基础弹"], ["基础攻击","%.1f" % raw],
+		["单段武器伤害","%.1f" % hit], ["攻击倍率","%.0f%%" % (mult*100)],
+		["绝对攻击倍率","%.0f%%" % (final_mult*100)], ["实际攻速","%.2f 次/秒" % rate],
+		["当前射程","%.0f" % w.attack_range()], ["生命","%.1f / %.1f" % [p.health,p.stats.get_value(&"max_health")]],
+		["暴击率","%.1f%%" % (Skills.get_crit_chance()*100)], ["暴击伤害","%.0f%%" % (Skills.get_crit_damage()*100)],
+		["超暴击率","%.1f%%" % ((Skills.get_super_crit_chance()+maxf(0,Skills.get_crit_chance()-1.0) if Skills.is_unlocked(&"crit_4") else Skills.get_super_crit_chance())*100)],
+		["弱点倍率","%.0f%%" % (Skills.weakness_multiplier()*100)],
+		["元素伤害倍率","%.0f%%" % (Skills.elemental_multiplier()*100)], ["护盾","%d" % Skills.displayed_shields()], ["移动速度","%.0f" % p.effective_move_speed()], ["闪避率","%.1f%%" % (Skills.get_dodge()*100)],
+		["弹数","%d" % maxi(1,int(w.stats.get_value(&"projectiles_per_shot")))], ["穿透 / 弹射","%d / %d" % [int(w.stats.get_value(&"pierce")),int(w.stats.get_value(&"ricochet"))]],
+		["弹速","%.0f" % w.stats.get_value(&"projectile_speed")], ["散布","%.1f°" % w.stats.get_value(&"spread_degrees")],
+		["能量","%.1f / %.0f" % [RunState.energy,RunState.max_energy]], ["能量回复","%.2f /秒" % (RunState.ENERGY_REGEN*Skills.energy_regen_multiplier())], ["幸运","%.1f" % p.stats.get_value(&"luck")], ["召唤物倍率","%.0f%%" % (p.stats.get_value(&"summon_damage")*100)],
+		["经验获取","%.0f%%" % (Skills.xp_multiplier()*100)], ["金币获取","%.0f%%" % (Skills.gold_multiplier()*100)]]
+
+
+func _draw_character_stats(layout: Dictionary, alpha: float) -> void:
+	var area: Rect2 = layout["main"]
+	var rows := character_stat_rows()
+	var lines := ceili(rows.size()/2.0)
+	var height := minf(34,area.size.y/maxi(1,lines))
+	var width := (area.size.x-12)/2.0
+	for i in rows.size():
+		var at := area.position+Vector2((i%2)*(width+12),int(i/2)*height)
+		draw_rect(Rect2(at,Vector2(width,height-2)),Color(0.045,0.061,0.086,alpha*0.85))
+		_text(rows[i][0],at+Vector2(10,height*0.67),11,Color(0.75,0.82,0.96,alpha*0.8))
+		_text_right(rows[i][1],at.x+width-10,at.y+height*0.67,12,Color(GOLD,alpha),true)
 
 
 func _draw_right_column(layout: Dictionary, alpha: float) -> void:
@@ -1406,6 +1422,8 @@ func _click(point: Vector2) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	for sibling in get_parent().get_children():
+		if sibling is WeaponChoicePanel and sibling.visible: return
 	if not visible or not (event is InputEventKey):
 		return
 	var key := event as InputEventKey

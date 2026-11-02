@@ -27,8 +27,8 @@ func _ready() -> void:
 	Skills.unlock(&"fire_3")
 	check(player.weapon.stats.get_value(&"spread_degrees") == 10.0, "tier three adds ten degrees")
 	Skills.unlock(&"fire_4")
-	check(is_equal_approx(player.weapon.get_final_fire_rate(), 3.0 * 1.85 * 1.05 * 1.2)
-		and Skills.fire_rate_cap_multiplier() == 9.0, "tier four retains original rate and cap")
+	check(is_equal_approx(player.weapon.get_final_fire_rate(), 3.0 * 1.85 * 1.05 * 1.3)
+		and Skills.fire_rate_cap_multiplier() == 6.0, "tier four retains original rate and cap")
 	for pair in [[0.0, 1], [0.49, 1], [0.5, 2], [0.99, 2], [1.0, 3], [1.5, 4]]:
 		check(Skills.fire_extra_shot_count(pair[0]) == pair[1], "extra shot threshold %s" % pair[0])
 	var state := RunState.rng.state
@@ -80,6 +80,24 @@ func _ready() -> void:
 	check(bullet.pierce == 0 and bullet.active_index >= 0, "pierce remains available after bouncing")
 	bullet._on_body_entered(enemies[2])
 	check(bullet.active_index < 0, "projectile releases after bounce and pierce are spent")
+	player.weapon.stats.set_base(&"pierce", 0)
+	manager.fire(player.global_position, Vector2.RIGHT, player.weapon.stats, ColorType.BLUE, player.weapon.core, true,
+		1.0, 1.0, 1.0, 1.0, true, &"", player.weapon, combat.new_budget())
+	var heavy_bullet: Projectile = manager._active.back()
+	check(heavy_bullet.infinite_pierce, "five-second heavy projectile has unlimited pierce")
+	for enemy in enemies:
+		heavy_bullet._on_body_entered(enemy)
+	check(heavy_bullet.active_index >= 0 and heavy_bullet.pierce == 0,
+		"heavy projectile survives successive targets with zero base pierce")
+	var hp := enemies[0].health
+	heavy_bullet._on_body_entered(enemies[0])
+	check(enemies[0].health == hp, "unlimited pierce does not hit the same target twice")
+	heavy_bullet._release()
+	manager.fire(player.global_position, Vector2.RIGHT, player.weapon.stats, ColorType.BLUE, player.weapon.core)
+	check(not (manager._active.back() as Projectile).infinite_pierce, "pooled normal projectile does not retain unlimited pierce")
+	check(combat.effective_pierce(player.weapon.stats, true) == 2 and combat.effective_pierce(player.weapon.stats, false) == 0,
+		"special weapon heavy shots translate to two extra pierce")
+	player.weapon.stats.set_base(&"pierce", 1)
 	var snapshot := {"weapon": player.weapon, "budget": combat.new_budget(), "ricochets": 1,
 		"hit_ids": {}, "damage": 10.0, "color": ColorType.BLUE, "heavy": false}
 	combat._queue_area_ricochet(snapshot, enemies[0], &"sword")
@@ -94,6 +112,9 @@ func _ready() -> void:
 	var lightning := WeaponRuntime.new(player.weapon.core)
 	lightning.acquire_form(&"lightning")
 	lightning.stats.set_base(&"ricochet", 1)
+	for i in enemies.size():
+		enemies[i].global_position = player.global_position+Vector2(80+i*lightning.attack_range()*0.125,0)
+	manager._collision_frame = -1
 	combat._visuals.clear()
 	combat._lightning({"origin": player.global_position, "direction": Vector2.RIGHT, "damage": 10.0,
 		"color": ColorType.BLUE, "heavy": false, "weapon": lightning, "budget": combat.new_budget(), "secondary": false})

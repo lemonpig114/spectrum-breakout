@@ -45,9 +45,9 @@ static func build() -> Array[SkillNodeResource]:
 		], [&"fire_rate"]
 	))
 	nodes.append(_node(
-		&"fire_4", "无限扳机", "+20% 射速（最终乘算）\n射速上限提升至原先三倍\n弹射 +1，命中后转向附近另一名敌人",
+		&"fire_4", "无限扳机", "+30% 射速（最终乘算）\n射速上限提升至原先两倍\n弹射 +1，命中后转向附近另一名敌人",
 		&"fire_rate", "射速", 4, pre_blade_t4,
-		[_mod(&"fire_rate_final", OP_MUL, 1.20, T_W), _mod(&"ricochet", OP_FLAT, 1.0, T_W)], [&"fire_rate", &"fire_cap"]
+		[_mod(&"fire_rate_final", OP_MUL, 1.30, T_W), _mod(&"ricochet", OP_FLAT, 1.0, T_W)], [&"fire_rate", &"fire_cap"]
 	))
 
 	# ── 2. 高伤害线 ──────────────────────────────────────────────
@@ -78,7 +78,7 @@ static func build() -> Array[SkillNodeResource]:
 	))
 	nodes.append(_node(
 		&"heavy_4", "五秒处刑",
-		"+20% 攻击倍率\n+20% 绝对攻击倍率\n每 5 秒蓄力重弹：+40 基础伤害、最终伤害 ×2.5、弹体 +50%",
+		"+20% 攻击倍率\n+20% 绝对攻击倍率\n每 5 秒蓄力重弹：+40 基础伤害、最终伤害 ×2.5、弹体 +50%，无限穿透",
 		&"heavy", "重击", 4, heavy_t4,
 		[_mod(&"damage_mult", OP_ADD, 0.20, T_W), _mod(&"damage_final", OP_MUL, 1.20, T_W)], [&"heavy", &"heavy_shot"]
 	))
@@ -96,11 +96,11 @@ static func build() -> Array[SkillNodeResource]:
 		&"energy", "能量", 2, energy_t1, [], [&"energy", &"energy_spend_damage", &"fire_rate"]
 	))
 	nodes.append(_node(
-		&"energy_3", "低能超载", "能量低于 50% 时，回复速度 +50%\n能量上限 +1",
+		&"energy_3", "能量馈赠", "能量回复 +20%\n获得一件炬火以上技能道具",
 		&"energy", "能量", 3, energy_t1, [], [&"energy"]
 	))
 	nodes.append(_node(
-		&"energy_4", "能量回流", "能量上限 +3\n每次消耗能量有 20% 概率回满能量",
+		&"energy_4", "能量回流", "能量上限 +4，低于半能量时回复 +100%\n获得一件炬火以上技能道具",
 		&"energy", "能量", 4, energy_t4, [], [&"energy"]
 	))
 
@@ -178,7 +178,7 @@ static func build() -> Array[SkillNodeResource]:
 		&"gold", "金币", 3, gold_t1, [], [&"gold", &"gold_auto_collect"]
 	))
 	nodes.append(_node(
-		&"gold_4", "点石成金", "攻击命中 20% 概率掉落 1 金币\n金币获取绝对 +20%",
+		&"gold_4", "点石成金", "攻击命中 20% 概率获得 1 金币\n金币获取绝对 +20%",
 		&"gold", "金币", 4, gold_t4,
 		[_mod(&"gold_gain", OP_FLAT, 0.20, T_P)], [&"gold", &"hit_gold"]
 	))
@@ -240,20 +240,12 @@ static func build() -> Array[SkillNodeResource]:
 		&"weakness", "弱点", 1, [],
 		[_mod(&"weakness_multiplier", OP_FLAT, 0.50, T_P)], [&"weakness"]
 	))
-	nodes.append(_node(
-		&"weak_2", "元素增幅", "元素伤害 +30%",
-		&"weakness", "弱点", 2, weak_t1,
-		[_mod(&"elemental_damage", OP_FLAT, 0.30, T_P)], [&"weakness"]
-	))
-	nodes.append(_node(
-		&"weak_3", "元素附着",
-		"弱点命中附加元素效果：\n红：200% 基础伤害的灼伤（2 秒内每半秒结算）\n绿：45% 基础伤害/秒的中毒（每半秒结算，层数不消失）\n蓝：25% 减速，冰附着追加 20% 冰裂伤害",
-		&"weakness", "弱点", 3, weak_t1, [], [&"weakness", &"elemental"]
-	))
-	nodes.append(_node(
-		&"weak_4", "处决", "弱点命中生命低于 15% 的普通敌人直接斩杀\nBoss 为 5%",
-		&"weakness", "弱点", 4, weak_t4, [], [&"weakness", &"execute"]
-	))
+	nodes.append(_node(&"weak_2", "精准打击", "弱点攻击暴击率 +20%、暴击伤害 +50%",
+		&"weakness", "弱点", 2, weak_t1, [], [&"weakness"]))
+	nodes.append(_node(&"weak_3", "处决", "弱点斩杀残血敌人：普通 15%，首领 5%",
+		&"weakness", "弱点", 3, weak_t1, [], [&"weakness", &"execute"]))
+	nodes.append(_node(&"weak_4", "弱点爆破", "弱点击杀有20%概率爆炸，造成150%伤害并染色\n弱点攻击忽略10%护甲",
+		&"weakness", "弱点", 4, weak_t4, [], [&"weakness"]))
 
 	# ── 11. 暴击线 ───────────────────────────────────────────────
 	var crit_t1: Array[StringName] = [&"crit_1"]
@@ -291,18 +283,19 @@ static func build() -> Array[SkillNodeResource]:
 	var shotgun_t4: Array[StringName] = [&"shotgun_2", &"shotgun_3"]
 
 	nodes.append(_node(
-		&"shotgun_1", "散弹", "+1 子弹\n+10° 射击散布\n伤害倍率 -20%\n射速 -10%",
+		&"shotgun_1", "散弹", "+1 子弹\n+10° 射击散布\n伤害倍率 -20%\n射速 -10%\n射程 -20%",
 		&"shotgun", "散弹", 1, [],
 		[
 			_mod(&"projectiles_per_shot", OP_FLAT, 1.0, T_W),
 			_mod(&"spread_degrees", OP_FLAT, 10.0, T_W),
+			_mod(&"range_mult", OP_ADD, -0.20, T_W),
 			_mod(&"damage_mult", OP_ADD, -0.20, T_W),
 			_mod(&"fire_rate_mult", OP_ADD, -0.10, T_W),
 		], [&"shotgun"]
 	))
 	nodes.append(_node(
-		&"shotgun_2", "裂片", "敌人死亡时裂出 3 枚 35% 伤害的小子弹",
-		&"shotgun", "散弹", 2, shotgun_t1, [], [&"shotgun", &"death_burst"]
+		&"shotgun_2", "贴身射击", "近距离子弹伤害最高 +200%，随距离衰减\n近距离命中附加击退",
+		&"shotgun", "散弹", 2, shotgun_t1, [], [&"shotgun", &"close_range"]
 	))
 	nodes.append(_node(
 		&"shotgun_3", "扩容弹匣", "+1 子弹\n+1 穿透\n+5° 射击散布",
@@ -314,10 +307,10 @@ static func build() -> Array[SkillNodeResource]:
 		], [&"shotgun"]
 	))
 	nodes.append(_node(
-		&"shotgun_4", "双倍装填", "伤害倍率 -20%\n射速 -20%\n子弹数翻倍",
+		&"shotgun_4", "双倍装填", "子弹数翻倍\n射速 -20%，射程 -30%",
 		&"shotgun", "散弹", 4, shotgun_t4,
 		[
-			_mod(&"damage_mult", OP_ADD, -0.20, T_W),
+			_mod(&"range_mult", OP_ADD, -0.30, T_W),
 			_mod(&"fire_rate_mult", OP_ADD, -0.20, T_W),
 			_mod(&"projectiles_per_shot", OP_MUL, 2.0, T_W),
 		], [&"shotgun"]
@@ -428,16 +421,29 @@ static func build() -> Array[SkillNodeResource]:
 	var blackhole_t4: Array[StringName] = [&"blackhole_2", &"blackhole_3"]
 	nodes.append(_node(&"blackhole_1", "引力核心", "首次 5 秒，之后每 20 秒释放黑洞\n持续 10 秒，吸收攻击成长，减速 40% 并撕扯",
 		&"blackhole", "黑洞", 1, [], [], [&"blackhole"]))
-	nodes.append(_node(&"blackhole_2", "坍缩", "黑洞结束时爆炸\n造成累计黑洞伤害的 300%",
+	nodes.append(_node(&"blackhole_2", "坍缩", "黑洞结束时爆炸\n造成累计黑洞伤害的 600%",
 		&"blackhole", "黑洞", 2, blackhole_t1, [], [&"blackhole"]))
-	nodes.append(_node(&"blackhole_3", "引力撕扯", "吞噬旋转加快，减速提高至 70%\n撕扯伤害提高至黑洞伤害的 15%，拉力增强",
+	nodes.append(_node(&"blackhole_3", "引力撕扯", "减速提高至 70%\n撕扯伤害提高至黑洞伤害的 15%，拉力增强",
 		&"blackhole", "黑洞", 3, blackhole_t1, [], [&"blackhole"]))
 	nodes.append(_node(&"blackhole_4", "无尽贪婪", "黑洞体型成长上限提升至初始 8 倍\n可以吞噬敌方子弹",
 		&"blackhole", "黑洞", 4, blackhole_t4, [], [&"blackhole"]))
+	var element_t1: Array[StringName] = [&"element_1"]
+	var element_t4: Array[StringName] = [&"element_2", &"element_3"]
+	nodes.append(_node(&"element_1", "元素附着", "攻击附着50%伤害的元素\n每秒造成层数伤害，随后层数减半",
+		&"element", "元素", 1, [], [], [&"elemental"]))
+	nodes.append(_node(&"element_2", "元素反应", "异色元素触发融化、冲击或燃烧\n冲击蓄力0.3秒，反应冷却0.5秒",
+		&"element", "元素", 2, element_t1, [], [&"elemental"]))
+	nodes.append(_node(&"element_3", "元素增幅", "元素伤害 +50%",
+		&"element", "元素", 3, element_t1, [_mod(&"elemental_damage", OP_FLAT, 0.50, T_P)], [&"elemental"]))
+	nodes.append(_node(&"element_4", "元素余波", "附着元素的敌人死亡时产生元素爆炸",
+		&"element", "元素", 4, element_t4, [], [&"elemental"]))
 	return nodes
 
 
 const RELIC_BRIEFS := {
+	&"dust_glasses": "小幅提升射程",
+	&"rare_telescope": "提升射程",
+	&"epic_sniper_scope": "提升射程，远处敌人受到更多伤害",
 	&"iridescent_lucifer": "半心恶魔化，治疗转攻击，恶魔护盾破碎清场",
 	&"iridescent_michael": "暴击率提升，超暴击斩杀残血敌人与首领",
 	&"epic_weapon_cache": "绝对伤害 -15%，获得一把武器",
@@ -455,13 +461,14 @@ const RELIC_BRIEFS := {
 	&"dust_blindfold": "射速提升，暴击能力降低",
 	&"dust_lottery": "小概率赢得三千金币",
 	&"dust_magnet": "拾取范围扩大",
-	&"rare_bond": "持续获得金币",
+	&"rare_bond": "每十秒获得金币",
 	&"rare_four_leaf": "幸运提升",
 	&"rare_three_leaf": "暴击能力提升，幸运降低",
 	&"rare_dumbbell": "基础伤害提升",
 	&"rare_bullet_shell": "攻击有机会连续开火",
 	&"rare_reroll": "每次进店获得免费重掷",
 	&"epic_six_sided_die": "升级可重选技能，每次进店免费刷新",
+	&"epic_infinite_die": "所有刷新次数加一",
 	&"rare_golden_apple": "立即回满生命",
 	&"rare_adrenaline": "受伤后短暂提升伤害与射速",
 	&"rare_gold_nugget": "立即获得一笔金币",
@@ -480,7 +487,7 @@ const RELIC_BRIEFS := {
 	&"rare_dog_food": "召唤物伤害提升",
 	&"rare_ounce_soul": "立即获得五十点灵魂",
 	&"rare_mystery_gift": "随机获得一件尘灰至炬火遗物",
-	&"rare_high_bond": "负债换取更高固定收益",
+	&"rare_high_bond": "每十秒获得更多金币",
 	&"rare_bloody_bandage": "受伤后的无敌时间延长",
 	&"epic_health_crystal": "生命上限增加一颗心",
 	&"epic_vip_card": "商店多一格，每次进店多两次刷新",
@@ -523,6 +530,14 @@ static func build_relics() -> Array[RelicResource]:
 		&"angel_guardian", "守护", "获得两层护盾，每层免除一次伤害",
 		&"angel", RelicResource.RARITY_RARE, [], 55
 	))
+
+	relics.append(_relic(&"dust_glasses", "眼镜", "射程 +15%",
+		&"", RelicResource.RARITY_DUST, [_mod(&"range_mult",OP_ADD,0.15,T_W)],12))
+	relics.append(_relic(&"rare_telescope", "望远镜", "射程 +40%",
+		&"", RelicResource.RARITY_RARE, [_mod(&"range_mult",OP_ADD,0.40,T_W)],45))
+	relics.append(_relic(&"epic_sniper_scope", "狙击镜", "射程 +50%\n目标越远伤害越高：4至10格，最高 +100%",
+		&"", RelicResource.RARITY_EPIC, [_mod(&"range_mult",OP_ADD,0.50,T_W)],110,
+		false,0.0,0.0,false,false,3))
 
 	# ── 尘灰遗物：轻微的正负杠杆，商店最低一档 ──
 	relics.append(_relic(
@@ -599,10 +614,10 @@ static func build_relics() -> Array[RelicResource]:
 
 	# ── 微光（蓝）：生命/经济/攻击方式的小遗物 ──
 	relics.append(_relic(
-		&"rare_bond", "债券", "拾取后金币 -300，可负债\n每秒获得 3 金币",
+		&"rare_bond", "债券", "每 10 秒获得 3 金币",
 		&"", RelicResource.RARITY_RARE,
 		[_mod(&"gold_income", OP_FLAT, 3.0, T_P)],
-		45
+		60
 	))
 	relics.append(_relic(
 		&"rare_four_leaf", "四叶草", "幸运遗物：幸运 +4",
@@ -633,10 +648,10 @@ static func build_relics() -> Array[RelicResource]:
 		55, false, 0.0, 0.0, false, false, 3
 	))
 	relics.append(_relic(
-		&"rare_reroll", "刷新", "每次进入商店，免费重掷 +1 次",
+		&"rare_reroll", "四面骰", "每次进入商店，免费重掷 +1 次",
 		&"", RelicResource.RARITY_RARE,
 		[],
-		45, false, 0.0, 0.0, false, false, 10
+		45, false, 0.0, 0.0, false, false, 5
 	))
 	relics.append(_relic(
 		&"rare_golden_apple", "金苹果", "立即回满生命",
@@ -744,10 +759,9 @@ static func build_relics() -> Array[RelicResource]:
 		&"", RelicResource.RARITY_RARE, [], 60, true
 	))
 	relics.append(_relic(
-		&"rare_high_bond", "高额债券", "拾取后金币 -1000，可负债\n每秒固定获得 12 金币",
+		&"rare_high_bond", "高额债券", "每 10 秒获得 10 金币",
 		&"", RelicResource.RARITY_RARE,
-		[_mod(&"gold_income", OP_FLAT, 12.0, T_P)], 100,
-		false, 0.0, 0.0, false, false, 10
+		[_mod(&"gold_income", OP_FLAT, 10.0, T_P)], 120
 	))
 	relics.append(_relic(
 		&"rare_bloody_bandage", "染血绷带", "受伤后无敌时间 +1 秒",
@@ -781,13 +795,13 @@ static func build_relics() -> Array[RelicResource]:
 	))
 	relics.append(_relic(
 		&"epic_shield_generator", "护盾发生器",
-		"切换形态多消耗 1 能量，获得一次当前颜色护盾\n同色攻击免疫一次，不叠加",
+		"切换形态获得一次当前颜色护盾\n同色攻击免疫一次，不叠加",
 		&"", RelicResource.RARITY_EPIC, [], 120,
 		false, 0.0, 0.0, true
 	))
 	relics.append(_relic(
 		&"epic_classic_revolver", "古典左轮",
-		"切换形态时依次环射 15 枚普通子弹\n每多一件多转一圈",
+		"切换形态时依次环射 15 枚普通子弹\n每多一件子弹伤害倍率 +100%",
 		&"", RelicResource.RARITY_EPIC, [], 125,
 		false, 0.0, 0.0, false, false, 3
 	))
@@ -798,7 +812,8 @@ static func build_relics() -> Array[RelicResource]:
 	))
 	relics.append(_relic(
 		&"epic_water_candle", "水蜡烛", "敌人刷新量 +20%",
-		&"", RelicResource.RARITY_EPIC, [], 90
+		&"", RelicResource.RARITY_EPIC, [], 90,
+		false, 0.0, 0.0, false, false, 5
 	))
 	relics.append(_relic(
 		&"epic_travel_journal", "旅行手册", "每移动 500 像素获得 5 金币与 5 经验",
@@ -817,7 +832,14 @@ static func build_relics() -> Array[RelicResource]:
 		"每次升级的技能选择可免费重选 1 次\n每次进入商店，免费刷新 +1 次",
 		&"", RelicResource.RARITY_EPIC,
 		[],
-		90, false, 0.0, 0.0, true
+		90, false, 0.0, 0.0, false, false, 3
+	))
+	relics.append(_relic(
+		&"epic_infinite_die", "无限面骰",
+		"所有刷新次数 +1\n（商店 / 升级 / 宝箱）",
+		&"", RelicResource.RARITY_LEGENDARY,
+		[],
+		150, false, 0.0, 0.0, true
 	))
 	relics.append(_relic(
 		&"epic_lucky_coin", "幸运币", "幸运遗物：幸运 +6\n金币获取 +10%",
@@ -846,6 +868,8 @@ static func build_relics() -> Array[RelicResource]:
 		"暴击率+50%\n超暴击斩杀生命低于60%的普通敌人、低于30%的首领",
 		&"", RelicResource.RARITY_IRIDESCENT,
 		[_mod(&"crit_chance", OP_FLAT, 0.5, T_P)], 300, false, 0.0, 0.0, true))
+	for relic in relics:
+		relic.skill_item = relic.id in [&"epic_classic_revolver", &"epic_shield_generator"]
 	return relics
 
 
@@ -915,6 +939,22 @@ static func _node(
 	return node
 
 
+## 技能池耗尽后的可重复兜底技能「潜能释放」：不进入正常三选一池，只在没有其它可选节点时填满。
+static func fallback_node() -> SkillNodeResource:
+	var node := _node(
+		&"repeat_potential", "潜能释放", "基础攻击 +10\n攻击倍率 +10%\n暴击伤害 +10%",
+		&"core", "潜能", 1, [],
+		[
+			_mod(&"damage", OP_FLAT, 10.0, T_W),
+			_mod(&"damage_mult", OP_ADD, 0.10, T_W),
+			_mod(&"crit_damage", OP_FLAT, 0.10, T_P),
+		], [&"repeatable"]
+	)
+	# 灰色卡面，与正常技能节点区分。
+	node.accent = Color(0.62, 0.64, 0.68)
+	return node
+
+
 static func _relic(
 	id: StringName,
 	display_name: String,
@@ -977,6 +1017,8 @@ static func _mod(
 
 static func _branch_color(branch: StringName) -> Color:
 	match branch:
+		&"element":
+			return Color(0.4,0.85,0.95)
 		&"fire_rate":
 			return Color(1.0, 0.38, 0.24)
 		&"heavy":

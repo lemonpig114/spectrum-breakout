@@ -10,7 +10,7 @@ func update_sweep(center: Vector2, angle: float, radius: float,
 	var colors := PackedColorArray()
 	var inner_colors := PackedColorArray()
 	var sign_value := -1.0 if reverse else 1.0
-	var span := minf(2.1, progress * TAU)
+	var span := minf(2.1, smoothstep(0.0, 1.0, progress) * TAU)
 	var fade := 1.0 - smoothstep(0.72, 1.0, progress)
 	for i in 21:
 		var t := float(i) / 20.0

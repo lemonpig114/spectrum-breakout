@@ -53,9 +53,9 @@ func _test_catalog() -> void:
 				dust += 1
 		else:
 			sided += 1
-	failures += _check(Skills.relics.size() == 55, "55 relics in the catalog")
-	failures += _check(dust == 10, "10 dust-tier relics")
-	failures += _check(neutral == 51, "51 neutral relics")
+	failures += _check(Skills.relics.size() == 59, "59 relics in the catalog")
+	failures += _check(dust == 11, "11 dust-tier relics")
+	failures += _check(neutral == 55, "55 neutral relics")
 	failures += _check(sided == 4, "4 demon/angel relics")
 
 	var unique_sided := 0
@@ -66,7 +66,7 @@ func _test_catalog() -> void:
 		if not relic.unique and relic.side == &"":
 			repeatable_neutral += 1
 	failures += _check(unique_sided == 4, "demon/angel relics are marked unique")
-	failures += _check(repeatable_neutral == 40, "most neutral relics are repeatable")
+	failures += _check(repeatable_neutral == 44, "most neutral relics are repeatable")
 	failures += _check(
 		Skills.get_relic(&"dust_knife").repeat_label() == ""
 			and Skills.get_relic(&"demon_pointed_vessel").repeat_label() == "唯一",
@@ -138,7 +138,12 @@ func _test_consumables() -> void:
 	failures += _check(Skills.get_relic(&"dust_knife").max_stacks == 0, "knife has no stack cap")
 	failures += _check(Skills.get_relic(&"dust_paper_star").max_stacks == 3, "paper star caps at three")
 	failures += _check(Skills.get_relic(&"dust_running_shoes").max_stacks == 3, "running shoes cap at three")
-	failures += _check(Skills.get_relic(&"rare_reroll").max_stacks == 10, "reroll caps at ten")
+	failures += _check(Skills.get_relic(&"rare_reroll").max_stacks == 5, "four-sided die caps at five")
+	failures += _check(Skills.get_relic(&"epic_six_sided_die").max_stacks == 3
+		and not Skills.get_relic(&"epic_six_sided_die").unique, "six-sided die stacks up to three")
+	failures += _check(Skills.get_relic(&"epic_infinite_die").unique
+		and Skills.get_relic(&"epic_infinite_die").rarity == RelicResource.RARITY_LEGENDARY,
+		"infinite die is a unique legendary")
 	failures += _check(Skills.get_relic(&"rare_feast").rarity == RelicResource.RARITY_EPIC, "feast is epic")
 	failures += _check(Skills.get_relic(&"rare_feast").max_stacks == 3, "feast caps at three")
 	var owned := Skills.owned_relics.size()
@@ -212,13 +217,13 @@ func _test_lucky_relics() -> void:
 
 	var bond_gold := RunState.gold
 	failures += _check(Skills.grant_relic(&"rare_bond"), "bond can be picked")
-	failures += _check(RunState.gold == bond_gold - 300, "bond deducts 300 gold after pickup and may create debt")
-	failures += _check(is_equal_approx(Skills.gold_income(), 3.0), "bond pays three gold per second")
+	failures += _check(RunState.gold == bond_gold, "bond no longer deducts gold on pickup")
+	failures += _check(is_equal_approx(Skills.gold_income(), 3.0), "bond pays three gold per interval")
 	var gold_gain_base := player.stats.get_base(&"gold_gain")
 	player.stats.set_base(&"gold_gain", 2.0)
-	RunState.set("_income_accum", 0.0)
+	RunState.set("_income_clock", 0.0)
 	var before_interest := RunState.gold
-	RunState._process(1.0)
+	RunState._process(RunState.INCOME_INTERVAL)
 	failures += _check(RunState.gold == before_interest + 3,
 		"bond interest ignores the gold gain multiplier")
 	player.stats.set_base(&"gold_gain", gold_gain_base)
@@ -493,8 +498,9 @@ func _test_new_relics() -> void:
 	target.queue_free()
 
 
-## 冲击释放器按一次“弱点命中”结算，弱 3 的元素附着与弱 4 的处决都应生效。
+## 冲击释放器按一次“弱点命中”结算，独立元素线的附着与弱 3 的处决都应生效。
 func _test_impact_weakness_synergy() -> void:
+	Skills.unlock(&"element_1",true)
 	for tier in range(1, 4):
 		Skills.unlock(StringName("weak_%d" % tier), true)
 	RunState.energy = RunState.max_energy
@@ -512,17 +518,17 @@ func _test_impact_weakness_synergy() -> void:
 	RunState.energy = RunState.max_energy
 	failures += _check(RunState.cycle_color(1), "synergy test switches red to green")
 	failures += _check(
-		float(target.get("_poison_dps")) > 0.0,
-		"impact weakness hit triggers the weak tier 3 elemental status"
+		float(target.element_layers.get(ColorType.GREEN,0.0)) > 0.0,
+		"impact hit triggers the independent elemental attachment"
 	)
-	failures += _check(not target.is_dead, "impact weakness hit does not execute before tier 4")
+	failures += _check(not target.is_dead, "full-health target is outside the execution threshold")
 
 	Skills.unlock(&"weak_4", true)
 	var execute_target: Enemy = enemy_scene.instantiate()
 	execute_target.configure(ContentDB.get_enemy(&"chaser_hex"), player, ColorType.BLUE)
 	main.world.add_child(execute_target)
 	execute_target.global_position = player.global_position + Vector2(80.0, 0.0)
-	# 远高于冲击伤害，但生命比例低于 15%，满足弱 4 的处决阈值。
+	# 远高于冲击伤害，但生命比例低于 15%，满足弱 3 的处决阈值。
 	execute_target.max_health = 1000000.0
 	execute_target.health = 1000.0
 
@@ -532,7 +538,7 @@ func _test_impact_weakness_synergy() -> void:
 	failures += _check(RunState.cycle_color(1), "synergy test switches to green again")
 	failures += _check(
 		execute_target.is_dead,
-		"impact weakness hit triggers the weak tier 4 execution"
+		"impact weakness hit triggers weak tier three execution"
 	)
 
 	target.queue_free()

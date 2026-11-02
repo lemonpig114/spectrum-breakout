@@ -19,6 +19,17 @@ var batch_enabled := true
 var combat: WeaponCombat
 var derived_active := 0
 var active_sprite_trails := 0
+var _moving_projectile := false
+var centralized_collision := OS.get_cmdline_user_args().has("--centralized-projectile-collision") and not OS.get_cmdline_user_args().has("--legacy-projectile-physics")
+var _collision_cells := {}
+var _collision_frame := -1
+var _query_ids := {}
+var _collision_enemies: Array[Enemy] = []
+var _collision_positions := PackedVector2Array()
+var _collision_radii := PackedFloat32Array()
+var _collision_ids := PackedInt64Array()
+var _bounds_frame := -1
+var _bounds := Rect2()
 var _guidance_frame := -100
 var _guidance_enemies: Array = []
 var _guidance_cache := {}
@@ -107,10 +118,11 @@ func fire(
 	budget: Dictionary = {},
 	can_split: bool = true,
 	form_override: StringName = &""
-) -> void:
+) -> Projectile:
+	if not projectile_visible_bounds().has_point(origin): return null
 	var derived := weapon != null and not can_split and source_kind in [&"weapon:star", &"clone"]
 	if derived and derived_active >= MAX_DERIVED_ACTIVE:
-		return
+		return null
 	var projectile: Projectile = null
 
 	while not _pool.is_empty():
@@ -128,10 +140,17 @@ func fire(
 		self, origin, direction, stats, color_index, core, heavy, damage_scale, size_scale,
 		speed_scale, lifetime_scale, allow_crit, source_kind, weapon, budget, can_split, form_override
 	)
+	projectile.monitoring = not centralized_collision
+	if centralized_collision:
+		projectile.set_physics_process(false)
+		projectile.collision_mask = 0
+		projectile.monitoring = false
+		projectile.get_node("CollisionShape2D").set_deferred("disabled", true)
 	projectile.active_index = _active.size()
 	_active.append(projectile)
 	if derived:
 		derived_active += 1
+	return projectile
 
 
 func release(projectile: Projectile) -> void:
@@ -163,6 +182,125 @@ func release(projectile: Projectile) -> void:
 		_pool.append(projectile)
 	else:
 		projectile.queue_free()
+
+
+func projectile_visible_bounds() -> Rect2:
+	var frame := Engine.get_physics_frames()
+	if _bounds_frame != frame:
+		_bounds_frame = frame
+		var camera := get_viewport().get_camera_2d()
+		if camera != null:
+			var half_view := get_viewport_rect().size * 0.5 / camera.zoom
+			_bounds = Rect2(camera.get_screen_center_position()-half_view, half_view*2)
+		else:
+			_bounds = Rect2(Vector2.ZERO,get_viewport_rect().size)
+	return _bounds
+
+
+func clip_weapon_range(origin: Vector2, direction: Vector2, requested: float) -> float:
+	var bounds := projectile_visible_bounds()
+	if not bounds.has_point(origin): return 0.0
+	var dir := direction.normalized()
+	var distance := maxf(0,requested)
+	if dir.x > 0.00001: distance = minf(distance,(bounds.end.x-origin.x)/dir.x)
+	elif dir.x < -0.00001: distance = minf(distance,(bounds.position.x-origin.x)/dir.x)
+	if dir.y > 0.00001: distance = minf(distance,(bounds.end.y-origin.y)/dir.y)
+	elif dir.y < -0.00001: distance = minf(distance,(bounds.position.y-origin.y)/dir.y)
+	return maxf(0,distance)
+
+
+func _physics_process(delta: float) -> void:
+	if not centralized_collision: return
+	var clock := CombatProfiler.begin()
+	_ensure_collision_grid()
+	for shot in _active.duplicate():
+		if not is_instance_valid(shot) or shot.active_index < 0 or shot.orbiting: continue
+		var start: Vector2 = shot.global_position
+		var traveled: float = shot.distance_traveled
+		_moving_projectile = true
+		var move_clock := CombatProfiler.begin()
+		shot._simulate_projectile(delta)
+		CombatProfiler.end(&"projectile_movement", move_clock)
+		_moving_projectile = false
+		if shot.active_index < 0 or shot.orbiting: continue
+		var finish: Vector2 = shot.global_position
+		if not shot._returning and shot._return_extension < 0.0:
+			finish = start + (finish-start).limit_length(maxf(0, shot.range_limit-traveled))
+		if not (shot._pending_retire and shot.form_at_fire == &"cannon"):
+			_sweep_projectile(shot, start, finish)
+		if shot.active_index >= 0 and shot._pending_retire: release(shot)
+	CombatProfiler.end(&"projectile_manager", clock)
+
+
+func _ensure_collision_grid() -> void:
+	var frame := Engine.get_physics_frames()
+	if _collision_frame == frame: return
+	_collision_frame = frame
+	_collision_cells.clear()
+	_collision_enemies.clear()
+	_collision_positions.clear()
+	_collision_radii.clear()
+	_collision_ids.clear()
+	for node in get_tree().get_nodes_in_group(&"enemies"):
+		var enemy := node as Enemy
+		if enemy == null or enemy.is_dead: continue
+		var index := _collision_enemies.size()
+		_collision_enemies.append(enemy)
+		_collision_positions.append(enemy.global_position)
+		_collision_radii.append(enemy.radius)
+		_collision_ids.append(enemy.get_instance_id())
+		var low := Vector2i(((enemy.global_position-Vector2.ONE*enemy.radius)/72.0).floor())
+		var high := Vector2i(((enemy.global_position+Vector2.ONE*enemy.radius)/72.0).floor())
+		for y in range(low.y, high.y+1):
+			for x in range(low.x, high.x+1):
+				var key := Vector2i(x,y)
+				if not _collision_cells.has(key): _collision_cells[key] = []
+				_collision_cells[key].append(index)
+
+
+## Reuse the same spatial snapshot for melee, waves, explosions and chain queries.
+func enemies_near(origin: Vector2, reach: float) -> Array[Enemy]:
+	_ensure_collision_grid()
+	# Broad attacks should not visit hundreds of empty grid cells.
+	if reach >= 144.0: return _collision_enemies
+	var found: Array[Enemy] = []
+	var seen := {}
+	var low := Vector2i(((origin-Vector2.ONE*reach)/72.0).floor())
+	var high := Vector2i(((origin+Vector2.ONE*reach)/72.0).floor())
+	for y in range(low.y,high.y+1):
+		for x in range(low.x,high.x+1):
+			for index: int in _collision_cells.get(Vector2i(x,y), []):
+				if seen.has(index): continue
+				seen[index] = true
+				var enemy := _collision_enemies[index]
+				if is_instance_valid(enemy) and not enemy.is_dead: found.append(enemy)
+	return found
+
+
+func _sweep_projectile(shot: Projectile, start: Vector2, finish: Vector2) -> void:
+	var query_clock := CombatProfiler.begin()
+	var radius := maxf(3, shot.projectile_size*0.9)
+	var low := Vector2i(((start.min(finish)-Vector2.ONE*radius)/72.0).floor())
+	var high := Vector2i(((start.max(finish)+Vector2.ONE*radius)/72.0).floor())
+	_query_ids.clear()
+	var hits: Array[int] = []
+	var hit_ids: Dictionary = shot._return_hit_ids if shot._returning else shot._hit_ids
+	for y in range(low.y, high.y+1):
+		for x in range(low.x, high.x+1):
+			for index: int in _collision_cells.get(Vector2i(x,y), []):
+				if _query_ids.has(index) or hit_ids.has(_collision_ids[index]): continue
+				_query_ids[index] = true
+				var at := _collision_positions[index]
+				if Geometry2D.get_closest_point_to_segment(at,start,finish).distance_squared_to(at) <= (_collision_radii[index]+radius)**2:
+					hits.append(index)
+	if hits.size() > 1:
+		hits.sort_custom(func(a: int,b: int): return start.distance_squared_to(_collision_positions[a])<start.distance_squared_to(_collision_positions[b]))
+	CombatProfiler.end(&"projectile_candidates", query_clock)
+	for index in hits:
+		if shot.active_index < 0 or shot.orbiting: break
+		var enemy := _collision_enemies[index]
+		if is_instance_valid(enemy) and not enemy.is_dead: shot._on_body_entered(enemy)
+
 
 
 func acquire_sprite_trail() -> bool:

@@ -16,6 +16,7 @@ var _options: Array[SkillNodeResource] = []
 var _rerolls_left := 0
 var _hover := -1
 var _appear := 0.0
+var _card_hover := {}
 var _font: Font
 
 
@@ -44,6 +45,9 @@ func close() -> void:
 
 
 func _process(delta: float) -> void:
+	if not visible: return
+	for i in _options.size():
+		_card_hover[i] = lerpf(float(_card_hover.get(i, 0)), 1.0 if _hover == i else 0.0, 1-exp(-18*delta))
 	_font = ThemeDB.fallback_font
 	_appear = minf(1.0, _appear + delta * 7.0)
 	queue_redraw()
@@ -91,7 +95,13 @@ func _draw() -> void:
 			Color(0.75, 0.95, 1.0, ease))
 
 
-func _draw_card(
+func _draw_card(rect: Rect2, node: SkillNodeResource, index: int, hovered: bool, alpha: float) -> void:
+	CardFeedback.zoom_begin(self, rect, 1.0 + 0.035 * float(_card_hover.get(index, 0)))
+	_draw_card_contents(rect, node, index, hovered, alpha)
+	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_card_contents(
 	rect: Rect2,
 	node: SkillNodeResource,
 	index: int,
@@ -119,7 +129,8 @@ func _draw_card(
 		Color(accent.r, accent.g, accent.b, 0.75 * alpha)
 	)
 
-	var branch_text := "%s · %s" % [
+	var repeatable := node.has_flag(&"repeatable")
+	var branch_text := node.branch_name if repeatable else "%s · %s" % [
 		node.branch_name,
 		TIER_NAMES[clampi(node.tier - 1, 0, TIER_NAMES.size() - 1)],
 	]
@@ -177,7 +188,7 @@ func _draw_card(
 	draw_string(
 		_font,
 		rect.position + Vector2(0.0, rect.size.y - 12.0),
-		"第 %d 阶技能" % node.tier,
+		"可重复选择" if repeatable else "第 %d 阶技能" % node.tier,
 		HORIZONTAL_ALIGNMENT_CENTER,
 		rect.size.x,
 		12,
@@ -277,9 +288,11 @@ func _reroll_rect() -> Rect2:
 
 
 func _choose(index: int) -> void:
+	if not visible: return
 	if index < 0 or index >= _options.size():
 		return
 	var node := _options[index]
+	CardFeedback.play(self, _card_rects()[index], node.accent)
 	Audio.play(&"ui_click")
 	close()
 	skill_chosen.emit(node)

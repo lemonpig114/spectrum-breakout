@@ -17,7 +17,11 @@ const NEIGHBOR_OFFSETS := [
 ]
 ## 压测时可关闭分离，量化其成本；正常游戏始终为 true。
 static var enabled := true
-static var threaded := OS.get_cmdline_user_args().has("--threaded-flock")
+static var threaded := not OS.get_cmdline_user_args().has("--no-threaded-flock")
+static var _mode_frame := -1
+static var _thread_mode := false
+static var _mode_generation := 0
+static var _job_generation := 0
 static var _job: RefCounted
 static var _task := -1
 static var _checked_frame := -1
@@ -29,6 +33,8 @@ static func shutdown() -> void:
 	_task = -1
 	_job = null
 	_checked_frame = -1
+	_mode_frame = -1
+	_thread_mode = false
 	_frame = -1
 	_cells.clear()
 	_steerings.clear()
@@ -43,7 +49,7 @@ static var _steerings: Dictionary = {}
 
 
 static func separation(enemy: Enemy) -> Vector2:
-	if threaded:
+	if _use_threads(enemy):
 		_ensure_threaded(enemy)
 		return _steerings.get(enemy.get_instance_id(), Vector2.ZERO)
 	_ensure_grid(enemy)
@@ -110,12 +116,28 @@ static func _ensure_grid(enemy: Enemy) -> void:
 ## 软位置修正：追逐的径向速度再大，也不应把多只敌人压在同一像素。
 ## 每对最多各承担约一半穿插深度；每两帧合计封顶 4px，再分摊到两帧，避免突然弹跳。
 static func correction(enemy: Enemy) -> Vector2:
-	if threaded:
+	if _use_threads(enemy):
 		_ensure_threaded(enemy)
 	else:
 		_ensure_grid(enemy)
 	var value: Vector2 = _corrections.get(enemy.get_instance_id(), Vector2.ZERO)
 	return value * CORRECTION_PER_FRAME
+
+
+static func _use_threads(enemy: Enemy) -> bool:
+	if not threaded:
+		return false
+	var frame := Engine.get_physics_frames()
+	if frame != _mode_frame:
+		_mode_frame = frame
+		var use := not OS.get_cmdline_user_args().has("--adaptive-flock") or enemy.get_tree().get_node_count_in_group(&"enemies") >= 64
+		if use != _thread_mode:
+			_mode_generation += 1
+			_steerings.clear()
+			_corrections.clear()
+			_frame = -1
+		_thread_mode = use
+	return _thread_mode
 
 
 static func _ensure_threaded(enemy: Enemy) -> void:
@@ -127,10 +149,11 @@ static func _ensure_threaded(enemy: Enemy) -> void:
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_steerings.clear()
 		_corrections.clear()
-		for i in _job.ids.size():
-			_steerings[_job.ids[i]] = _job.steering[i]
-			_corrections[_job.ids[i]] = _job.corrections[i]
-		_cells = _job.cells
+		if _job_generation == _mode_generation:
+			for i in _job.ids.size():
+				_steerings[_job.ids[i]] = _job.steering[i]
+				_corrections[_job.ids[i]] = _job.corrections[i]
+			_cells = _job.cells
 		_job = null
 		_task = -1
 	if _task >= 0 or frame % 2 != 0:
@@ -141,6 +164,7 @@ static func _ensure_threaded(enemy: Enemy) -> void:
 			_job.positions.append(node.global_position)
 			_job.radii.append(node.radius)
 			_job.ids.append(node.get_instance_id())
+	_job_generation = _mode_generation
 	_task = WorkerThreadPool.add_task(_job.compute, false, "Enemy separation")
 
 

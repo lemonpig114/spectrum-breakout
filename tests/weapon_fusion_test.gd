@@ -116,6 +116,7 @@ func _ready() -> void:
 	enemy.health = enemy.max_health
 	last._on_body_entered(enemy)
 	var after_outbound_hit := enemy.health
+	last._start_return()
 	failures += _check(last._returning, "boomerang enters return mode")
 	last._on_body_entered(enemy)
 	var after_return_hit := enemy.health

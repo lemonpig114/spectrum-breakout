@@ -3,8 +3,10 @@ extends Node2D
 
 ## 直接命中统一结算；派生攻击只入 FIFO 队列，逐物理帧限额处理。
 const EVENTS_PER_FRAME := 256
+const QUEUED_HITS_PER_FRAME := 24
 const DERIVATIVES_PER_ATTACK := 128
 const QUEUE_LIMIT := 4096
+const DERIVED_QUEUE_LIMIT := 128
 const VISUAL_LIMIT := 160
 const DERIVATIVES_PER_FRAME := 8
 const SWORD_WAVE_DISTANCE := 145.0
@@ -25,6 +27,9 @@ var manager
 var player
 var _events: Array[Dictionary] = []
 var _head := 0
+var _event_hits := 0
+var _event_render_frame := -1
+var _processing_event := false
 var _visuals: Array[Dictionary] = []
 var _sword_waves: Array[Dictionary] = []
 var _wave_pulses: Array[Dictionary] = []
@@ -33,6 +38,7 @@ var _scythe_trail_pool: Array[Polygon2D] = []
 var _scythe_trail_count := 0
 var _scythe_secondary_cooldown := 0.0
 var _sword_draw_scale := 1.0
+var _passive_scythe_cooldown := 0.0
 var _delayed_hits: Array[Dictionary] = []
 var _redraw_dirty := false
 var _absorbed_attacks: Array[Dictionary] = []
@@ -47,6 +53,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _simulate_attacks(_delta: float) -> void:
+	_passive_scythe_cooldown = maxf(0.0, _passive_scythe_cooldown - _delta)
 	_scythe_secondary_cooldown = maxf(0.0, _scythe_secondary_cooldown - _delta)
 	for i in range(_delayed_hits.size() - 1, -1, -1):
 		_delayed_hits[i].delay = float(_delayed_hits[i].delay) - _delta
@@ -54,11 +61,17 @@ func _simulate_attacks(_delta: float) -> void:
 			var echo: Dictionary = _delayed_hits[i]
 			_delayed_hits.remove_at(i)
 			enqueue(echo)
+	var event_clock := CombatProfiler.begin()
 	var processed := 0
-	while _head < _events.size() and processed < EVENTS_PER_FRAME:
+	var render_frame := Engine.get_process_frames()
+	if render_frame != _event_render_frame:
+		_event_render_frame = render_frame
+		_event_hits = 0
+	while _head < _events.size() and processed < EVENTS_PER_FRAME and _event_hits < QUEUED_HITS_PER_FRAME:
 		var event: Dictionary = _events[_head]
 		_head += 1
 		processed += 1
+		_processing_event = true
 		match event.kind:
 			&"extra_shot": fire_weapon(event.origin, event.direction, event.weapon.stats, int(event.color), bool(event.heavy), event.weapon)
 			&"sword": _sword(event)
@@ -69,15 +82,23 @@ func _simulate_attacks(_delta: float) -> void:
 			&"wave": _wave(event)
 			&"scythe": _scythe(event)
 			&"water_echo": _water_echo(event)
+		_processing_event = false
 	if _head >= _events.size():
 		_events.clear()
 		_head = 0
 	elif _head > 512:
 		_events = _events.slice(_head)
 		_head = 0
+	CombatProfiler.end(&"weapon_events", event_clock)
+	var area_clock := CombatProfiler.begin()
 	_advance_sword_waves(_delta)
+	CombatProfiler.end(&"sword_sim", area_clock)
+	area_clock = CombatProfiler.begin()
 	_advance_water_waves(_delta)
+	CombatProfiler.end(&"wave_sim", area_clock)
+	area_clock = CombatProfiler.begin()
 	_advance_scythe_sweeps(_delta)
+	CombatProfiler.end(&"scythe_sim", area_clock)
 
 
 func _process(delta: float) -> void:
@@ -89,7 +110,7 @@ func _process(delta: float) -> void:
 			var progress := clampf(float(visual.age) / SCYTHE_SWEEP_DURATION, 0.0, 1.0)
 			var turn := -1.0 if bool(visual.get("reverse", false)) else 1.0
 			visual.trail.update_sweep(to_local(visual.origin),
-				(visual.direction as Vector2).angle() + turn * TAU * progress,
+				(visual.direction as Vector2).angle() + turn * TAU * scythe_turn_progress(float(visual.age)),
 				float(visual.radius) * 0.82, progress,
 				RunState.color_of(int(visual.color)), bool(visual.get("reverse", false)))
 		if _visuals[i].time <= 0.0:
@@ -118,8 +139,12 @@ func _draw() -> void:
 			&"explosion": _draw_explosion_visual(visual, c)
 			_:
 				var alpha := clampf(float(visual.time) / 0.17, 0.0, 1.0)
-				draw_line(to_local(visual.from), to_local(visual.to),
-					Color(c.r, c.g, c.b, alpha), 3.0 * alpha, true)
+				var points: PackedVector2Array = visual.get("points", PackedVector2Array([to_local(visual.from), to_local(visual.to)]))
+				if int(float(visual.time) * 70.0) % 2 == 0:
+					points = visual.get("alternate", points)
+				draw_polyline(points, Color(c.r, c.g, c.b, alpha * 0.18), 7.0 * alpha, true)
+				draw_polyline(points, Color(c.r, c.g, c.b, alpha), 2.0 * alpha, true)
+				draw_polyline(points, Color(1.4, 1.6, 1.8, alpha * 0.7), maxf(0.5, alpha), true)
 
 
 func _draw_wave_visual(visual: Dictionary, c: Color) -> void:
@@ -135,7 +160,7 @@ func _draw_wave_visual(visual: Dictionary, c: Color) -> void:
 	for i in 25:
 		var u := float(i) / 12.0 - 1.0
 		var taper := pow(maxf(0.0, 1.0 - absf(u)), 0.7)
-		var point := _wave_front_point(center, direction, side, u, age)
+		var point := _wave_front_point(center, direction, side, u, age if Engine.get_frames_per_second() >= 45 else 0.5)
 		front.append(point + direction * (2.5 * taper))
 		back.append(point - direction * ((27.0 + sin(u * 4.0 + age * 2.0) * 4.0) * taper))
 		front_colors.append(Color(c.r, c.g, c.b, 0.085 * taper * fade))
@@ -151,6 +176,13 @@ func _draw_wave_visual(visual: Dictionary, c: Color) -> void:
 		var taper := pow(maxf(0.0, 1.0 - absf(u)), 0.55)
 		draw_line(front[i], front[i + 1],
 			Color(c.r, c.g, c.b, 0.19 * taper * fade), 1.5, true)
+	if Engine.get_frames_per_second() >= 45:
+		for band in 2:
+			var ripple := PackedVector2Array()
+			for j in 13:
+				var u := float(j)/6.0 - 1.0
+				ripple.append(_wave_front_point(center-direction*(10+band*12), direction, side, u, age+band*0.4))
+			draw_polyline(ripple, Color(c, 0.09 * fade), 1, true)
 	var anchors := [-0.83, -0.34, 0.31, 0.76]
 	for stream in 4:
 		var u: float = anchors[stream]
@@ -191,26 +223,34 @@ func _wave_front_point(center: Vector2, direction: Vector2, side: Vector2,
 	return center + side * (u * WAVE_HALF_WIDTH) + direction * (dome + curl + uneven)
 
 
+static func scythe_turn_progress(age: float) -> float:
+	# Zero angular speed at both ends, fastest at mid-swing, exactly one full turn.
+	var t := clampf(age / SCYTHE_SWEEP_DURATION, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
 func _draw_scythe_visual(visual: Dictionary, c: Color) -> void:
 	var age: float = clampf(float(visual.age) / SCYTHE_SWEEP_DURATION, 0.0, 1.0)
 	var center: Vector2 = to_local(visual.origin)
 	var turn := -1.0 if bool(visual.get("reverse", false)) else 1.0
-	var angle: float = (visual.direction as Vector2).angle() + turn * TAU * age
+	var angle: float = (visual.direction as Vector2).angle() + turn * TAU * scythe_turn_progress(float(visual.age))
 	var radius := float(visual.radius) * 0.82
 	var outer := PackedVector2Array()
 	var inner := PackedVector2Array()
 	for i in 17:
 		var t := float(i) / 16.0
-		var arc_angle := angle - 1.1 + t * 1.25
+		var arc_angle := angle - 1.45 + t * 1.65
 		var taper := pow(sin(PI * t), 1.15)
-		outer.append(center + Vector2.from_angle(arc_angle) * (radius + 4.0 * taper))
-		inner.append(center + Vector2.from_angle(arc_angle) * (radius - 7.0 * taper))
+		outer.append(center + Vector2.from_angle(arc_angle) * (radius + 9.0 * taper))
+		inner.append(center + Vector2.from_angle(arc_angle) * (radius - 16.0 * taper))
 	var polygon := outer.duplicate()
 	for i in range(inner.size() - 1, -1, -1):
 		polygon.append(inner[i])
 	var alpha := 0.72 * (1.0 - age * 0.65)
 	draw_colored_polygon(polygon, Color(c.r, c.g, c.b, alpha * 0.42))
-	draw_polyline(outer, Color(2.2, 2.2, 2.2, alpha * 0.78), 1.9, true)
+	draw_polyline(outer, Color(c.lerp(Color(2,2,2), 0.35), alpha * 0.9), 1.9, true)
+	for layer in 2:
+		draw_arc(center, radius * (0.93-layer*0.10), angle-1.5, angle-0.2, 24, Color(c, alpha*(0.20-layer*0.07)), 2+layer*2, true)
 	var handle_end: Vector2 = inner[0]
 	var handle_direction := (handle_end - center).normalized()
 	var handle_start := center + handle_direction * 14.0
@@ -253,9 +293,10 @@ func new_budget() -> Dictionary:
 
 
 func enqueue(event: Dictionary, derivative: bool = true) -> bool:
-	if derivative and _events.size() - _head >= QUEUE_LIMIT:
+	if _events.size() - _head >= QUEUE_LIMIT:
 		return false
 	if derivative:
+		if _events.size() - _head >= DERIVED_QUEUE_LIMIT: return false
 		var frame := Engine.get_physics_frames()
 		if frame != _derivative_frame:
 			_derivative_frame = frame
@@ -272,6 +313,21 @@ func enqueue(event: Dictionary, derivative: bool = true) -> bool:
 
 
 func _add_visual(visual: Dictionary) -> void:
+	if visual.get("kind", &"line") == &"line" and visual.has("from"):
+		var start: Vector2 = to_local(visual.from)
+		var finish: Vector2 = to_local(visual.to)
+		var length := start.distance_to(finish)
+		var side := (finish-start).normalized().orthogonal()
+		var points := PackedVector2Array()
+		var alternate := PackedVector2Array()
+		var count := clampi(int(length / 18), 3, 18)
+		for i in count+1:
+			var t := float(i)/count
+			var amplitude := minf(18, length * 0.08) * sin(t * PI)
+			points.append(start.lerp(finish,t) + side * sin(i*5.71 + start.x) * amplitude)
+			alternate.append(start.lerp(finish,t) + side * sin(i*7.17 + start.y) * amplitude)
+		visual.points = points
+		visual.alternate = alternate
 	if _visuals.size() < VISUAL_LIMIT:
 		_visuals.append(visual)
 
@@ -279,6 +335,8 @@ func _add_visual(visual: Dictionary) -> void:
 func fire_weapon(origin: Vector2, direction: Vector2, stats: StatBlock,
 		color_index: int, heavy: bool, weapon: WeaponRuntime,
 		clone_attack: bool = false, summon_scale: float = 1.0) -> void:
+	if not manager.projectile_visible_bounds().has_point(origin): return
+	weapon = weapon.attack_snapshot()
 	var form := weapon.primary_form
 	if form in [&"sword", &"scythe"] and weapon.has_form(&"sword") and weapon.has_form(&"scythe"):
 		form = &"scythe"
@@ -287,7 +345,20 @@ func fire_weapon(origin: Vector2, direction: Vector2, stats: StatBlock,
 	var data := weapon.primary_data()
 	if data != null:
 		scale = data.damage_scale
-	var base_damage := _weapon_damage(stats, color_index, heavy) * summon_scale
+	if weapon.has_secondary(&"scythe") and form != &"scythe" and not (form == &"sword" and weapon.has_form(&"scythe")) and not clone_attack and _passive_scythe_cooldown <= 0.0:
+		var rate := weapon.get_final_fire_rate() * (data.fire_rate_scale if data != null else 1.0)
+		if player != null and weapon.core != null:
+			rate = minf(rate, weapon.core.fire_rate * player._fire_rate_scale * Skills.fire_rate_cap_multiplier())
+		_passive_scythe_cooldown = 4.0 / maxf(0.1, rate)
+		var isolated := weapon.attack_snapshot(true)
+		isolated.primary_form = &"scythe"
+		isolated.owned_forms.assign([&"scythe"])
+		enqueue({"kind": &"scythe", "origin": player.global_position if player != null else origin,
+			"direction": direction, "damage": _weapon_damage(stats, color_index, false) * 2.5,
+			"color": color_index, "heavy": false, "weapon": isolated, "budget": new_budget(),
+			"secondary": true, "isolated": true, "clone": false}, false)
+	var sword_bonus := 1.2 if weapon.has_secondary(&"sword") else 1.0
+	var base_damage := _weapon_damage(stats, color_index, heavy) * summon_scale * sword_bonus
 	var damage := base_damage * scale
 	if form == &"sprite" and player != null:
 		damage *= player.stats.get_value(&"summon_damage")
@@ -308,9 +379,10 @@ func fire_weapon(origin: Vector2, direction: Vector2, stats: StatBlock,
 			enqueue({"kind": form, "origin": origin, "direction": direction,
 				"damage": damage, "base_damage": base_damage, "color": color_index,
 				"heavy": heavy, "weapon": weapon, "budget": budget,
-				"secondary": false, "clone": clone_attack, "pulse": 0}, false)
+				"secondary": false, "clone": clone_attack, "pulse": 0,
+				"thrown": form == &"scythe" and weapon.has_form(&"sword")}, false)
 		_:
-			var projectile_scale := scale * summon_scale
+			var projectile_scale := scale * summon_scale * sword_bonus
 			if form == &"sprite" and player != null:
 				projectile_scale *= player.stats.get_value(&"summon_damage")
 			manager.fire(origin, direction, stats, color_index, weapon.core, heavy, projectile_scale,
@@ -332,6 +404,8 @@ func resolve_hit(source: Node, enemy: Enemy, damage: float, color_index: int,
 		apply_water_force: bool = true) -> float:
 	if enemy == null or enemy.is_dead:
 		return 0.0
+	if weapon != null and not manager.projectile_visible_bounds().has_point(enemy.global_position): return 0.0
+	if _processing_event: _event_hits += 1
 	var hit_position := enemy.global_position - direction.normalized() * enemy.radius
 	if source is Projectile:
 		hit_position = (source as Projectile).global_position
@@ -374,32 +448,11 @@ func resolve_hit(source: Node, enemy: Enemy, damage: float, color_index: int,
 		FX.hit_burst(enemy.global_position, burst_color, 22.0, 0.16, EnergyBurst.STYLE_STAR)
 	if heavy:
 		FX.hit_burst(enemy.global_position, burst_color, 38.0, 0.28, EnergyBurst.STYLE_HEAVY)
-	if source_kind != &"clone" and weapon_id != &"cannon" and Skills.has_splash() and (Skills.splash_every_hit() or first_hit or last_hit):
+	var cannon_passive := weapon != null and weapon.has_secondary(&"cannon")
+	if trigger_traits and source_kind != &"clone" and weapon_id != &"cannon" and not cannon_passive and Skills.has_splash() and (Skills.splash_every_hit() or first_hit or last_hit):
 		Skills.apply_splash(enemy.global_position, context.amount, color_index, enemy)
 	if trigger_traits and weapon != null:
-		var budget := attack_budget if not attack_budget.is_empty() else new_budget()
-		if weapon.has_form(&"scythe") and weapon_id not in [&"scythe", &"sword"] \
-				and not bool(budget.get("scythe_triggered", false)):
-			budget.scythe_triggered = true
-			enqueue({"kind": &"scythe", "origin": enemy.global_position,
-				"direction": direction, "damage": damage * 0.35, "radius": 70.0,
-				"color": color_index, "heavy": false, "weapon": weapon,
-				"budget": budget, "secondary": true, "clone": source_kind == &"clone"})
-		if weapon.has_form(&"wave") and not enemy.is_dead and apply_water_force:
-			enemy.apply_water_push(direction)
-		if weapon.has_form(&"wave") and weapon_id in [&"sword", &"scythe"]:
-			for delay in [0.10, 0.22]:
-				if _delayed_hits.size() < 256:
-					_delayed_hits.append({"kind": &"water_echo", "delay": delay,
-						"target": weakref(enemy), "damage": damage * 0.15,
-						"direction": direction, "color": color_index, "weapon": weapon,
-						"weapon_id": weapon_id, "source_kind": source_kind, "budget": budget})
-		if weapon.has_form(&"cannon") and weapon_id != &"sword":
-			enqueue({"kind": &"explosion", "origin": enemy.global_position,
-				"damage": damage * 0.55, "radius": 82.0,
-				"color": color_index, "weapon": weapon,
-				"budget": budget, "secondary": true,
-				"excluded": enemy, "clone": source_kind == &"clone"})
+		_passive_on_hit(source, enemy, damage, color_index, direction, source_kind, weapon_id, weapon, attack_budget)
 	return minf(before, context.amount)
 
 
@@ -415,84 +468,21 @@ func on_projectile_hit(projectile: Node, enemy: Enemy, first_hit: bool, last_hit
 		projectile.direction, projectile.is_heavy, projectile.source_kind,
 		first_hit, last_hit, projectile.allow_crit, attribution,
 		projectile.weapon, true, projectile.budget)
-	var weapon: WeaponRuntime = projectile.weapon
-	if weapon == null:
-		return
-	if weapon.has_form(&"lightning") and form != &"lightning" and not projectile.chain_triggered:
-		projectile.chain_triggered = true
-		enqueue({"kind": &"lightning", "origin": enemy.global_position,
-			"direction": projectile.direction, "damage": projectile.damage * 0.5,
-			"color": projectile.color_index, "heavy": false, "weapon": weapon,
-			"budget": projectile.budget, "secondary": true, "excluded": enemy,
-			"clone": projectile.source_kind == &"clone"})
-	if weapon.has_form(&"star") and form != &"star" and projectile.can_split:
-		projectile.can_split = false
-		enqueue({"kind": &"split", "origin": enemy.global_position,
-			"direction": projectile.direction, "damage_scale": projectile.shot_scale * 0.5,
-			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget,
-			"clone": projectile.source_kind == &"clone"})
-	elif form == &"star" and projectile.can_split:
-		projectile.can_split = false
-		enqueue({"kind": &"split", "origin": enemy.global_position,
-			"direction": projectile.direction, "damage_scale": projectile.shot_scale * 0.5,
-			"color": projectile.color_index, "weapon": weapon, "budget": projectile.budget,
-			"clone": projectile.source_kind == &"clone"})
-	if weapon.has_form(&"sword") and form != &"sword" and form != &"boomerang" and not projectile.sword_triggered:
-		projectile.sword_triggered = true
-		enqueue({"kind": &"sword", "origin": enemy.global_position,
-			"direction": projectile.direction, "damage": projectile.damage * 0.6,
-			"color": projectile.color_index, "heavy": false, "weapon": weapon,
-			"budget": projectile.budget, "secondary": true,
-			"clone": projectile.source_kind == &"clone"})
 
 
 func queue_cannon_explosion(projectile: Projectile, position: Vector2) -> void:
+	if not projectile._returning:
+		if projectile._cannon_outbound_exploded: return
+		projectile._cannon_outbound_exploded = true
 	var splash_bonus := Skills.splash_ratio() if Skills.has_splash() else 0.0
 	enqueue({"kind": &"explosion", "origin": position,
-		"damage": projectile.damage * (1.0 + splash_bonus),
+		"damage": projectile.damage * (1.0 + splash_bonus) * (0.65 if projectile._returning else 1.0),
 		"radius": 88.0 + (Skills.splash_radius() * 0.25 if Skills.has_splash() else 0.0),
 		"color": projectile.color_index, "weapon": projectile.weapon,
 		"budget": projectile.budget, "secondary": false,
 		"clone": projectile.source_kind == &"clone"}, false)
-	var weapon: WeaponRuntime = projectile.weapon
-	if weapon == null:
-		return
-	var derived := {"origin": position, "direction": projectile.direction,
-		"color": projectile.color_index, "weapon": weapon,
-		"budget": projectile.budget, "clone": projectile.source_kind == &"clone"}
-	if weapon.has_form(&"scythe") and not bool(projectile.budget.get("scythe_triggered", false)):
-		projectile.budget.scythe_triggered = true
-		var scythe_event := derived.duplicate()
-		scythe_event.merge({"kind": &"scythe", "damage": projectile.damage * 0.35,
-			"radius": 70.0, "heavy": false, "secondary": true})
-		enqueue(scythe_event)
-	if weapon.has_form(&"star"):
-		var star_event := derived.duplicate()
-		star_event.kind = &"split"
-		star_event.damage_scale = projectile.shot_scale * 0.5
-		enqueue(star_event)
-	if weapon.has_form(&"lightning"):
-		var lightning_event := derived.duplicate()
-		lightning_event.kind = &"lightning"
-		lightning_event.damage = projectile.damage * 0.5
-		lightning_event.heavy = false
-		lightning_event.secondary = true
-		enqueue(lightning_event)
-	if weapon.has_form(&"sword"):
-		var sword_event := derived.duplicate()
-		sword_event.kind = &"sword"
-		sword_event.damage = projectile.damage * 0.6
-		sword_event.heavy = false
-		sword_event.secondary = true
-		enqueue(sword_event)
-	if weapon.has_form(&"boomerang") and player != null:
-		enqueue({"kind": &"return_arc", "path": [player.global_position, position],
-			"damage": projectile.damage * 0.5, "color": projectile.color_index,
-			"budget": projectile.budget, "weapon": weapon, "attribution": &"cannon",
-			"clone": projectile.source_kind == &"clone"})
 
 
-## Transfer live area attacks to the same bounded orbit system as projectiles.
 func absorb_nearby_attacks(hole: BlackHoleField, limit: int) -> int:
 	var count := 0
 	for spec in [{"form": &"sword", "list": _sword_waves}, {"form": &"wave", "list": _wave_pulses}, {"form": &"scythe", "list": _scythe_sweeps}]:
@@ -512,7 +502,7 @@ func absorb_nearby_attacks(hole: BlackHoleField, limit: int) -> int:
 				at = original.position
 			elif spec.form == &"scythe":
 				var turn := -1.0 if bool(original.get("reverse", false)) else 1.0
-				var angle := (original.direction as Vector2).angle() + turn * TAU * clampf(float(original.age) / SCYTHE_SWEEP_DURATION, 0.0, 1.0)
+				var angle := (original.direction as Vector2).angle() + turn * TAU * scythe_turn_progress(float(original.age))
 				at += Vector2.from_angle(angle) * float(original.radius) * 0.82
 			var shape_reach := 16.0 if spec.form == &"scythe" else 54.0 * float(original.get("size_scale", 1.0))
 			if at.distance_squared_to(hole.global_position) > (hole.effect_radius() + 40.0 + shape_reach) ** 2:
@@ -543,7 +533,7 @@ func _make_absorbed_attack(original: Dictionary, form: StringName, at: Vector2) 
 		"kind": form, "secondary": original.get("secondary", false), "summon_scale": original.get("summon_scale", 1.0),
 		"color": original.color, "heavy": original.get("heavy", false), "weapon": weapon,
 		"budget": original.budget, "clone": original.get("clone", false), "hit_ids": hits,
-		"remaining": maxi(0, 1 + int(weapon.stats.get_value(&"pierce")) - hits.size()),
+		"remaining": maxi(0, 1 + effective_pierce(weapon.stats, bool(original.get("heavy", false))) - hits.size()),
 		"position": at, "angle": (original.direction as Vector2).angle(), "visual_scale": 1.0,
 		"hit_radius": 12.0 if form == &"lightning" else (54.0 * float(original.get("size_scale", 1.0))),
 		"size_scale": original.get("size_scale", 1.0)}
@@ -615,7 +605,7 @@ func _draw_absorbed_attack(attack: Dictionary) -> void:
 			_draw_wave_visual({"age": 0.15, "duration": 1.0, "direction": Vector2.RIGHT,
 				"position": global_position}, c)
 		&"scythe":
-			var center := global_position - Vector2.from_angle(TAU * 0.12 / SCYTHE_SWEEP_DURATION) * 70.0 * 0.82
+			var center := global_position - Vector2.from_angle(TAU * scythe_turn_progress(0.12)) * 70.0 * 0.82
 			_draw_scythe_visual({"origin": center, "direction": Vector2.RIGHT,
 				"age": 0.12, "radius": 70.0}, c)
 		&"lightning":
@@ -634,6 +624,7 @@ func _sword(event: Dictionary) -> void:
 		"heavy": event.heavy, "weapon": event.weapon, "budget": event.budget,
 		"secondary": event.secondary, "clone": event.get("clone", false),
 		"summon_scale": event.get("summon_scale", 1.0),
+		"reach": manager.clip_weapon_range(event.origin,event.direction,(event.weapon as WeaponRuntime).attack_range(&"sword", bool(event.heavy))),
 		"size_scale": event.get("size_scale", 1.0),
 		"finisher": event.get("finisher", false),
 		"can_return": (not bool(event.secondary) or bool(event.get("finisher", false))) and (event.weapon as WeaponRuntime).has_form(&"boomerang"),
@@ -645,6 +636,7 @@ func _advance_sword_waves(delta: float) -> void:
 	for i in range(_sword_waves.size() - 1, -1, -1):
 		var wave: Dictionary = _sword_waves[i]
 		wave.age = float(wave.age) + delta
+		_home_area(wave, delta)
 		if float(wave.age) >= SWORD_WAVE_DURATION:
 
 			if bool(wave.can_return) and not bool(wave.returning):
@@ -655,23 +647,12 @@ func _advance_sword_waves(delta: float) -> void:
 				_request_redraw()
 				continue
 		var progress := clampf(float(wave.age) / SWORD_WAVE_DURATION, 0.0, 1.0)
-		var distance := lerpf(22.0, SWORD_WAVE_DISTANCE * float(wave.get("size_scale", 1.0)), 1.0 - progress if bool(wave.returning) else progress)
-		if (wave.weapon as WeaponRuntime).has_form(&"sprite"):
-			distance *= 1.22
+		var distance := lerpf(22.0, float(wave.reach), 1.0 - progress if bool(wave.returning) else progress)
 		var direction: Vector2 = wave.direction
 		var position: Vector2 = wave.origin + direction * distance
-		if (not bool(wave.secondary) or bool(wave.finisher)) and not bool(wave.returning) and (wave.weapon as WeaponRuntime).has_form(&"cannon"):
-			var last_blast: float = float(wave.get("last_blast", 0.0))
-			if distance - last_blast >= 36.0:
-				wave.last_blast = distance
-				enqueue({"kind": &"explosion", "origin": position,
-					"damage": float(wave.damage) * 0.45, "radius": 52.0,
-					"color": wave.color, "weapon": wave.weapon,
-					"budget": wave.budget, "secondary": true,
-					"clone": wave.clone})
 		var side := direction.orthogonal()
 		var hit_ids: Dictionary = wave.return_ids if bool(wave.returning) else wave.hit_ids
-		for node in get_tree().get_nodes_in_group(&"enemies"):
+		for node in manager.enemies_near(position, 70.0 * float(wave.get("size_scale", 1.0))):
 			var enemy := node as Enemy
 			if enemy == null or enemy.is_dead or hit_ids.has(enemy.get_instance_id()):
 				continue
@@ -691,26 +672,15 @@ func _advance_sword_waves(delta: float) -> void:
 				_sword_first_hit_effects(wave, enemy)
 
 
-func _sword_first_hit_effects(wave: Dictionary, enemy: Enemy) -> void:
-	var weapon: WeaponRuntime = wave.weapon
-	if weapon.has_form(&"lightning"):
-		enqueue({"kind": &"lightning", "origin": enemy.global_position,
-			"direction": wave.direction, "damage": float(wave.damage) * 0.5,
-			"color": wave.color, "heavy": false, "weapon": weapon,
-			"budget": wave.budget, "secondary": true, "excluded": enemy,
-			"clone": wave.clone})
-	if weapon.has_form(&"star"):
-		enqueue({"kind": &"split", "origin": enemy.global_position,
-			"direction": wave.direction, "damage_scale": 0.6 * float(wave.summon_scale),
-			"color": wave.color, "weapon": weapon, "budget": wave.budget,
-			"clone": wave.clone})
+func _sword_first_hit_effects(_wave: Dictionary, _enemy: Enemy) -> void:
+	pass # Unified passive pipeline handles every form.
 
 
 func _draw_sword_wave(wave: Dictionary) -> void:
 	_sword_draw_scale = float(wave.get("size_scale", 1.0))
 	var progress := clampf(float(wave.age) / SWORD_WAVE_DURATION, 0.0, 1.0)
 	var fade := pow(1.0 - progress, 1.25) * (0.72 if bool(wave.returning) else 1.0)
-	var distance := lerpf(22.0, SWORD_WAVE_DISTANCE * float(wave.get("size_scale", 1.0)), 1.0 - progress if bool(wave.returning) else progress)
+	var distance := lerpf(22.0, float(wave.reach), 1.0 - progress if bool(wave.returning) else progress)
 	if (wave.weapon as WeaponRuntime).has_form(&"sprite"):
 		distance *= 1.22
 	var direction: Vector2 = wave.direction
@@ -762,47 +732,54 @@ func _sword_curve(t: float) -> Vector2:
 		+ Vector2(-24.0, -53.0) * (t * t * t)
 
 
+func effective_pierce(stats: StatBlock, heavy: bool) -> int:
+	return maxi(0, int(stats.get_value(&"pierce"))) + (2 if heavy else 0)
+
+
 func _lightning(event: Dictionary) -> void:
 	var weapon: WeaponRuntime = event.weapon
 	var origin: Vector2 = event.origin
-	var previous: Enemy = event.get("excluded") as Enemy
+	var excluded_ref: Variant = event.get("excluded")
+	var previous: Enemy = excluded_ref as Enemy if is_instance_valid(excluded_ref) else null
 	var visited := {}
 	if previous != null:
 		visited[previous.get_instance_id()] = true
 	var path: Array[Vector2] = [origin]
-	var pierce := maxi(0, int(weapon.stats.get_value(&"pierce")))
+	var pierce := effective_pierce(weapon.stats, bool(event.heavy))
+	var attack_range := weapon.attack_range(&"lightning", bool(event.heavy))
 	var total := (1 if bool(event.secondary) else 2) + pierce + maxi(0, int(weapon.stats.get_value(&"ricochet")))
 	for hop in total:
 		var best: Enemy
 		var best_distance := INF
-		for node in get_tree().get_nodes_in_group(&"enemies"):
+		for node in manager.enemies_near(origin, attack_range if hop == 0 and not bool(event.secondary) else attack_range * 0.25):
 			var enemy := node as Enemy
-			if enemy == null or enemy.is_dead or enemy == previous:
+			if enemy == null or enemy.is_dead or enemy == previous or not manager.projectile_visible_bounds().has_point(enemy.global_position):
 				continue
 			if hop >= total - pierce and visited.has(enemy.get_instance_id()):
 				continue
 			var offset := enemy.global_position - origin
 			var dist := offset.length_squared()
-			var reach := (620.0 if hop == 0 and not bool(event.secondary) else CHAIN_RANGE)
-			if weapon.has_form(&"sprite"):
-				reach += 100.0
+			var reach := (attack_range if hop == 0 and not bool(event.secondary) else attack_range * 0.25)
 			if dist > reach ** 2:
 				continue
-			if hop == 0 and not bool(event.secondary) and absf((event.direction as Vector2).angle_to(offset)) > PI / 4.0:
+			if hop == 0 and not bool(event.secondary) and not weapon.has_secondary(&"sprite") and absf((event.direction as Vector2).angle_to(offset)) > PI / 4.0:
 				continue
 			if dist < best_distance:
 				best = enemy
 				best_distance = dist
 		var aim: Vector2 = (best.global_position - origin).normalized() if best != null else event.direction
-		var absorb_reach := sqrt(best_distance) if best != null else (620.0 if hop == 0 else CHAIN_RANGE)
+		var absorb_reach := sqrt(best_distance) if best != null else (attack_range if hop == 0 else attack_range * 0.25)
+		absorb_reach = manager.clip_weapon_range(origin,aim,absorb_reach)
 		var segment := event.duplicate()
 		segment.hit_ids = visited.duplicate()
-		segment.damage = float(event.damage) * (0.5 if hop >= total - pierce else 1.0)
+		segment.damage = float(event.damage) * (0.5 if hop >= total - pierce else 1.0) * (0.9 if hop > 0 or bool(event.secondary) else 1.0)
 		if _absorb_lightning_segment(segment, origin, aim, absorb_reach):
 			break
 		if best == null:
+			if path.size() == 1:
+				FX.hit_impact(origin, RunState.color_of(int(event.color)), aim)
 			break
-		var damage := float(event.damage) * (0.5 if hop >= total - pierce else 1.0)
+		var damage := float(event.damage) * (0.5 if hop >= total - pierce else 1.0) * (0.9 if hop > 0 or bool(event.secondary) else 1.0)
 		resolve_hit(self, best, damage, int(event.color),
 			(best.global_position - origin).normalized(), bool(event.heavy),
 			&"clone" if bool(event.get("clone", false)) else &"weapon_lightning",
@@ -814,20 +791,9 @@ func _lightning(event: Dictionary) -> void:
 		visited[best.get_instance_id()] = true
 		previous = best
 	if not bool(event.secondary) and path.size() > 1:
-		if weapon.has_form(&"star"):
-			enqueue({"kind": &"split", "origin": origin,
-				"direction": event.direction, "damage_scale": float(event.damage) * 0.5 / maxf(0.001, _weapon_damage(weapon.stats, int(event.color), false)),
-				"color": event.color, "weapon": weapon, "budget": event.budget,
-				"clone": event.get("clone", false)})
-		if weapon.has_form(&"boomerang"):
-			enqueue({"kind": &"return_arc", "path": path, "damage": float(event.damage) * 0.5,
+		if weapon.has_secondary(&"boomerang"):
+			enqueue({"kind": &"return_arc", "path": path, "damage": float(event.damage) * 0.45,
 				"color": event.color, "budget": event.budget, "weapon": weapon,
-				"clone": event.get("clone", false)})
-		if weapon.has_form(&"sword"):
-			enqueue({"kind": &"sword", "origin": origin,
-				"direction": event.direction, "damage": float(event.damage) * 0.6,
-				"color": event.color, "heavy": false, "weapon": weapon,
-				"budget": event.budget, "secondary": true,
 				"clone": event.get("clone", false)})
 
 
@@ -840,11 +806,14 @@ func _split(event: Dictionary) -> void:
 		if int(budget.spawned) >= DERIVATIVES_PER_ATTACK:
 			break
 		budget.spawned = int(budget.spawned) + 1
-		manager.fire(event.origin + direction * 12.0, direction, weapon.stats,
+		var fragment: Projectile = manager.fire(event.origin + direction * 12.0, direction, weapon.stats,
 			int(event.color), weapon.core, false, float(event.damage_scale),
-			0.65, 1.0, 0.7, false,
+			0.65, 1.0, 0.7, true,
 			&"clone" if bool(event.get("clone", false)) else &"weapon:star",
 			event.weapon, budget, false, &"star")
+		if fragment != null:
+			fragment.range_limit = minf(fragment.range_limit, weapon.attack_range(&"star") * (160.0 / 600.0))
+			fragment.lifetime = minf(fragment.lifetime, 0.45)
 
 
 func _return_arc(event: Dictionary) -> void:
@@ -868,27 +837,33 @@ func _return_arc(event: Dictionary) -> void:
 
 
 func _explosion(event: Dictionary) -> void:
-	Audio.play(&"weapon_hit_cannon")
 	var origin: Vector2 = event.origin
 	var radius: float = float(event.radius)
-	_add_visual({"kind": &"explosion", "origin": origin, "radius": radius,
-		"color": event.color, "time": 0.22})
-	var excluded: Enemy = event.get("excluded") as Enemy
+	if not event.has("targets"):
+		Audio.play(&"weapon_hit_cannon")
+		_add_visual({"kind": &"explosion", "origin": origin, "radius": radius,
+			"color": event.color, "time": 0.22})
+		event.targets = manager.enemies_near(origin, radius).duplicate()
+		event.cursor = 0
+		event.first = true
+	var excluded: Variant = event.get("excluded")
 	var weapon: WeaponRuntime = event.get("weapon") as WeaponRuntime
-	var first := true
-	for node in get_tree().get_nodes_in_group(&"enemies"):
-		var enemy := node as Enemy
-		if enemy == null or enemy.is_dead or enemy == excluded:
-			continue
-		if enemy.global_position.distance_squared_to(origin) > (radius + enemy.radius) ** 2:
-			continue
+	while int(event.cursor) < event.targets.size():
+		if _processing_event and _event_hits >= QUEUED_HITS_PER_FRAME:
+			# Resume this event before later FIFO entries; no target/damage is discarded.
+			_head -= 1
+			return
+		var candidate: Variant = event.targets[int(event.cursor)]
+		event.cursor = int(event.cursor) + 1
+		if not is_instance_valid(candidate): continue
+		var enemy := candidate as Enemy
+		if enemy == null or enemy.is_dead or enemy == excluded: continue
+		if enemy.global_position.distance_squared_to(origin) > (radius + enemy.radius) ** 2: continue
 		resolve_hit(self, enemy, float(event.damage), int(event.color),
 			(enemy.global_position - origin).normalized(), false,
 			&"clone" if bool(event.get("clone", false)) else &"weapon_cannon",
-			first, true, true, &"cannon", weapon, false, event.budget)
-		if weapon != null and weapon.has_form(&"wave") and not enemy.is_dead:
-			enemy.apply_water_push((enemy.global_position - origin).normalized())
-		first = false
+			bool(event.first), true, true, &"cannon", weapon, not bool(event.secondary), event.budget)
+		event.first = false
 
 
 func _wave(event: Dictionary) -> void:
@@ -899,11 +874,9 @@ func _wave(event: Dictionary) -> void:
 	wave.direction = (event.direction as Vector2).normalized()
 	wave.age = 0.0
 	wave.distance = 22.0
-	wave.reach = WAVE_RANGE + maxi(0, int(weapon.stats.get_value(&"pierce"))) * 20.0
-	if weapon.has_form(&"sprite"):
-		wave.reach += 50.0
+	wave.reach = manager.clip_weapon_range(event.origin,event.direction,weapon.attack_range(&"wave", bool(event.heavy)) + effective_pierce(weapon.stats, bool(event.heavy)) * 20.0)
 	wave.speed = WAVE_SPEED * maxf(0.25, weapon.stats.get_value(&"projectile_speed") / 720.0)
-	wave.duration = (float(wave.reach) - 22.0) / float(wave.speed)
+	wave.duration = maxf(0.001,(float(wave.reach) - 22.0) / float(wave.speed))
 	wave.position = event.origin + wave.direction * 22.0
 	wave.hits = {}
 	for id in event.get("excluded_ids", {}):
@@ -918,13 +891,14 @@ func _advance_water_waves(delta: float) -> void:
 	for i in range(_wave_pulses.size() - 1, -1, -1):
 		var wave: Dictionary = _wave_pulses[i]
 		wave.age = float(wave.age) + delta
+		_home_area(wave, delta)
 		wave.distance = minf(float(wave.reach), 22.0 + float(wave.speed) * float(wave.age))
 		wave.position = wave.origin + wave.direction * float(wave.distance)
 		var direction: Vector2 = wave.direction
 		var side := direction.orthogonal()
 		var weapon: WeaponRuntime = wave.weapon
-		var half_width := WAVE_HALF_WIDTH + maxi(0, int(weapon.stats.get_value(&"pierce"))) * 5.0
-		for node in get_tree().get_nodes_in_group(&"enemies"):
+		var half_width := WAVE_HALF_WIDTH + effective_pierce(weapon.stats, bool(wave.heavy)) * 5.0
+		for node in manager.enemies_near(wave.position, half_width + WAVE_DEPTH * 0.5):
 			var enemy := node as Enemy
 			if enemy == null or enemy.is_dead:
 				continue
@@ -942,11 +916,15 @@ func _advance_water_waves(delta: float) -> void:
 				bool(wave.heavy), &"clone" if bool(wave.clone) else &"weapon_wave",
 				bool(wave.first_hit), count == 2, true, &"wave", weapon, count == 0,
 				wave.budget, count == 0)
+			if not enemy.is_dead: enemy.apply_water_push(direction)
 			_queue_area_ricochet(wave, enemy, &"wave")
 			if bool(wave.first_hit):
 				_nonprojectile_first_hit_effects(wave, enemy)
 				wave.first_hit = false
-		if float(wave.age) >= float(wave.duration):
+		var max_duration := float(wave.duration)
+		if weapon.has_secondary(&"sprite"):
+			max_duration = minf(max_duration, 1.0 if manager._active.size() > 100 else 2.0)
+		if float(wave.age) >= max_duration:
 			_wave_pulses.remove_at(i)
 			if not bool(wave.secondary) and weapon.has_form(&"boomerang"):
 				enqueue({"kind": &"wave", "origin": wave.position,
@@ -958,7 +936,7 @@ func _advance_water_waves(delta: float) -> void:
 func _scythe(event: Dictionary) -> void:
 	if _scythe_sweeps.size() >= 64:
 		return
-	if bool(event.secondary) and not bool(event.get("reverse", false)) and not bool(event.get("is_ricochet", false)):
+	if bool(event.secondary) and not bool(event.get("reverse", false)) and not bool(event.get("is_ricochet", false)) and not bool(event.get("isolated", false)):
 		if _scythe_secondary_cooldown > 0.0:
 			return
 		var secondary_count := 0
@@ -977,9 +955,11 @@ func _scythe(event: Dictionary) -> void:
 	sweep.hits = event.get("excluded_ids", {}).duplicate()
 	sweep.ricochets = event.get("ricochets", int(weapon.stats.get_value(&"ricochet")))
 	sweep.first_hit = true
-	sweep.radius = float(event.get("radius", SCYTHE_RADIUS)) + maxi(0, int(weapon.stats.get_value(&"pierce"))) * 12.0
-	if weapon.has_form(&"sprite"):
-		sweep.radius += 25.0
+	sweep.travel_origin = event.get("travel_origin", event.origin)
+	sweep.travel_range = manager.clip_weapon_range(sweep.travel_origin,event.direction,weapon.attack_range(weapon.primary_form, bool(event.heavy)))
+	sweep.radius = minf(float(event.get("radius", weapon.attack_range(&"scythe", bool(event.heavy)))) + effective_pierce(weapon.stats, bool(event.heavy)) * 12.0,manager.projectile_visible_bounds().size.length()*0.5)
+	if bool(sweep.get("thrown", false)):
+		sweep.radius = float(sweep.radius) * 0.8
 	_scythe_sweeps.append(sweep)
 	if _visuals.size() < VISUAL_LIMIT:
 		var trail: Polygon2D
@@ -1001,10 +981,17 @@ func _advance_scythe_sweeps(delta: float) -> void:
 		var sweep: Dictionary = _scythe_sweeps[i]
 		sweep.age = float(sweep.age) + delta
 		var weapon: WeaponRuntime = sweep.weapon
+		if weapon.primary_form == &"scythe" and not weapon.has_form(&"sword") and not bool(sweep.secondary) and not bool(sweep.clone) and is_instance_valid(player):
+			sweep.origin = player.global_position
+		if bool(sweep.get("thrown", false)): _home_area(sweep, delta)
+		if bool(sweep.get("thrown", false)):
+			var progress := clampf(float(sweep.age) / SCYTHE_SWEEP_DURATION, 0.0, 1.0)
+			if bool(sweep.get("reverse", false)): progress = 1.0 - progress
+			sweep.origin = sweep.travel_origin + sweep.direction * float(sweep.travel_range) * progress
 		var turn := -1.0 if bool(sweep.get("reverse", false)) else 1.0
-		var covered := minf(TAU, float(sweep.age) / SCYTHE_SWEEP_DURATION * TAU)
-		for node in get_tree().get_nodes_in_group(&"enemies"):
-			if bool(sweep.secondary) and not bool(sweep.get("reverse", false)) and sweep.hits.size() >= 6:
+		var covered := scythe_turn_progress(float(sweep.age)) * TAU
+		for node in manager.enemies_near(sweep.origin, float(sweep.radius)):
+			if bool(sweep.secondary) and not bool(sweep.get("isolated", false)) and not bool(sweep.get("reverse", false)) and sweep.hits.size() >= 6:
 				break
 			var enemy := node as Enemy
 			if enemy == null or enemy.is_dead or sweep.hits.has(enemy.get_instance_id()):
@@ -1027,18 +1014,13 @@ func _advance_scythe_sweeps(delta: float) -> void:
 				sweep.first_hit = false
 		if float(sweep.age) >= SCYTHE_SWEEP_DURATION:
 			_scythe_sweeps.remove_at(i)
-			if not bool(sweep.secondary) and weapon.has_form(&"sword"):
-				enqueue({"kind": &"sword", "origin": sweep.origin,
-					"direction": sweep.direction, "damage": float(sweep.damage) * 1.2 / 2.5,
-					"color": sweep.color, "heavy": false, "weapon": weapon,
-					"budget": sweep.budget, "secondary": true, "clone": sweep.clone,
-					"size_scale": 1.6, "finisher": true})
 			if not bool(sweep.secondary) and weapon.has_form(&"boomerang"):
 				enqueue({"kind": &"scythe", "origin": sweep.origin,
 					"direction": sweep.direction, "damage": float(sweep.damage) * 0.55,
 					"color": sweep.color, "heavy": false, "weapon": weapon,
 					"budget": sweep.budget, "secondary": true, "clone": sweep.clone,
-					"reverse": true})
+					"reverse": true, "thrown": sweep.get("thrown", false),
+					"travel_origin": sweep.travel_origin})
 
 
 ## Area forms translate a bounce into one redirected follow-up of that same form.
@@ -1061,30 +1043,56 @@ func _queue_area_ricochet(attack: Dictionary, enemy: Enemy, form: StringName) ->
 		"damage": attack.damage, "color": attack.color, "heavy": attack.heavy,
 		"weapon": attack.weapon, "budget": attack.budget, "secondary": true,
 		"clone": attack.get("clone", false), "ricochets": remaining - 1,
-		"excluded_ids": excluded, "is_ricochet": true,
+		"excluded_ids": excluded, "is_ricochet": true, "isolated": attack.get("isolated", false),
 		"summon_scale": attack.get("summon_scale", 1.0), "size_scale": attack.get("size_scale", 1.0)})
 
 
-func _nonprojectile_first_hit_effects(event: Dictionary, enemy: Enemy) -> void:
-	if bool(event.secondary):
-		return
-	var weapon: WeaponRuntime = event.weapon
-	if weapon.has_form(&"lightning"):
-		enqueue({"kind": &"lightning", "origin": enemy.global_position,
-			"direction": event.direction, "damage": float(event.damage) * 0.5,
-			"color": event.color, "heavy": false, "weapon": weapon,
-			"budget": event.budget, "secondary": true, "excluded": enemy,
-			"clone": event.clone})
-	if weapon.has_form(&"star"):
-		enqueue({"kind": &"split", "origin": enemy.global_position,
-			"direction": event.direction, "damage_scale": float(event.damage) * 0.5 / maxf(0.001, _weapon_damage(weapon.stats, int(event.color), false)),
-			"color": event.color, "weapon": weapon,
-			"budget": event.budget, "clone": event.clone})
-	if weapon.has_form(&"sword") and event.get("kind") != &"scythe":
-		enqueue({"kind": &"sword", "origin": enemy.global_position,
-			"direction": event.direction, "damage": float(event.damage) * 0.6,
-			"color": event.color, "heavy": false, "weapon": weapon,
-			"budget": event.budget, "secondary": true, "clone": event.clone})
+func _home_area(attack: Dictionary, delta: float) -> void:
+	var weapon: WeaponRuntime = attack.weapon
+	if not weapon.has_secondary(&"sprite") or bool(attack.get("returning", false)): return
+	attack.seek_clock = float(attack.get("seek_clock", 0.0)) - delta
+	if float(attack.seek_clock) > 0: return
+	attack.seek_clock = 0.12
+	var at: Vector2 = attack.get("position", attack.origin)
+	var target := manager.guidance_target(at, minf(300, weapon.attack_range()), attack.get("hit_ids", {})) as Node2D
+	if target != null:
+		attack.direction = (attack.direction as Vector2).slerp((target.global_position-at).normalized(), 0.2).normalized()
+
+
+func _nonprojectile_first_hit_effects(_event: Dictionary, _enemy: Enemy) -> void:
+	pass # All forms now share _passive_on_hit; no duplicate legacy effects.
+
+
+func _passive_on_hit(source: Node, enemy: Enemy, damage: float, color: int, direction: Vector2,
+		source_kind: StringName, form: StringName, weapon: WeaponRuntime, incoming: Dictionary) -> void:
+	var budget := incoming if not incoming.is_empty() else new_budget()
+	var clone := source_kind == &"clone"
+	var can_split := not bool(budget.get("star_split", false))
+	if source is Projectile:
+		can_split = (source as Projectile).can_split
+	if weapon.has_form(&"star") and can_split:
+		budget.star_split = true
+		if source is Projectile: (source as Projectile).can_split = false
+		var ratio := 0.5 if weapon.primary_form == &"star" else 0.2
+		enqueue({"kind": &"split", "origin": enemy.global_position, "direction": direction,
+			"damage_scale": damage * ratio / maxf(0.001, _weapon_damage(weapon.stats, color, false)),
+			"color": color, "weapon": weapon, "budget": budget, "clone": clone})
+	if weapon.has_secondary(&"lightning") and form != &"lightning":
+		enqueue({"kind": &"lightning", "origin": enemy.global_position, "direction": direction,
+			"damage": damage * 0.5, "color": color, "heavy": false, "weapon": weapon,
+			"budget": budget, "secondary": true, "excluded": enemy, "clone": clone})
+	if weapon.has_secondary(&"wave"):
+		for delay in [0.10, 0.22]:
+			if _delayed_hits.size() < 256:
+				_delayed_hits.append({"kind": &"water_echo", "delay": delay,
+					"target": weakref(enemy), "damage": damage * 0.20, "direction": direction,
+					"color": color, "weapon": weapon, "weapon_id": form, "source_kind": source_kind, "budget": budget})
+	if weapon.has_secondary(&"cannon"):
+		var ratio := Skills.splash_ratio() + 0.20 if Skills.has_splash() else 0.40
+		var radius := Skills.splash_radius() * 1.4 if Skills.has_splash() else 82.0
+		enqueue({"kind": &"explosion", "origin": enemy.global_position, "damage": damage * ratio,
+			"radius": radius, "color": color, "weapon": weapon, "budget": budget,
+			"secondary": true, "clone": clone})
 
 
 func _water_echo(event: Dictionary) -> void:
@@ -1094,7 +1102,6 @@ func _water_echo(event: Dictionary) -> void:
 	resolve_hit(self, target, float(event.damage), int(event.color), event.direction,
 		false, event.source_kind, false, false, true, event.weapon_id,
 		event.weapon, false, event.budget, false)
-	target.apply_water_push(event.direction)
 
 
 func _request_redraw() -> void:

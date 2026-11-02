@@ -6,6 +6,7 @@ extends RefCounted
 var source: Node = null
 var target: Node = null
 var amount: float = 0.0
+var base_damage: float = 0.0
 ## 已计入 amount 的元素附加伤害；绘制数字时与主伤害分开显示。
 var elemental_bonus: float = 0.0
 var color_index: int = ColorType.RED

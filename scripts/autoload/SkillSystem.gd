@@ -2,7 +2,7 @@ extends Node
 
 ## 局内技能树运行时。
 ##
-## - 维护 80 个技能节点（20 线 × 4 阶）与解锁状态：1 阶无前置；2/3 阶需要 1 阶；
+## - 维护 84 个技能节点（21 线 × 4 阶）与解锁状态：1 阶无前置；2/3 阶需要 1 阶；
 ##   4 阶需要 2、3 阶都点亮。
 ## - 普通数值写入武器/player 的 StatBlock；特殊能力在这里结算。
 ## - 恶魔/天使线互斥：2 阶决定契约阵营，本侧遗物才会进入商店；3 阶解锁地面祭坛。
@@ -26,9 +26,17 @@ const SHOP_BASE_SLOTS := 4
 const SHOP_MAX_SLOTS := 11
 ## 商人基础间隔 90 秒；第一只固定 1:20 出现（见 Director）。
 const MERCHANT_BASE_INTERVAL := 90.0
+## 点石成金隐藏限制：每秒最多生效 5 次。
+const GOLD_HIT_PROC_CAP := 5
+## 技能池耗尽后填充的可重复技能 id。
+const REPEATABLE_ID := &"repeat_potential"
 
 var nodes: Array[SkillNodeResource] = []
 var relics: Array[RelicResource] = []
+## 技能池耗尽后的可重复兜底节点（不进入正常可选池）。
+var repeatable_node: SkillNodeResource
+## 潜能释放的叠加序号，保证每次修改器来源唯一。
+var _potential_serial := 0
 var unlocked: Dictionary = {}
 var owned_relics: Array[RelicResource] = []
 ## 实际伤害按造成的生命损失统计；属性增伤另列单项移除估算，不能相加。
@@ -45,6 +53,9 @@ var shop_rerolls := 0
 var _weapon_cache_offered := false
 
 var soul_kills := 0
+## 点石成金每秒生效计数（隐藏上限用，跨秒归零）。
+var _gold_hit_procs := 0
+var _gold_hit_window := 1.0
 
 var _by_id: Dictionary = {}
 var _soul_timer := 0.0
@@ -94,7 +105,13 @@ var _pending_damage_snapshots: Array[RefCounted] = []
 var debug_force_super_crit := false
 
 
+var element_combat: Node2D
+
 func _ready() -> void:
+	element_combat = preload("res://scripts/combat/ElementCombat.gd").new()
+	add_child(element_combat)
+	EventBus.run_ended.connect(element_combat.clear)
+	EventBus.player_died.connect(element_combat.clear)
 	debug_force_super_crit = OS.get_cmdline_user_args().has("--force-super-crit")
 	if debug_force_super_crit:
 		print("SKILLS debug: every hit is a super crit")
@@ -112,6 +129,8 @@ func _ready() -> void:
 
 
 func begin_run() -> void:
+	if is_instance_valid(element_combat):
+		element_combat.clear()
 	_pending_damage_snapshots.clear()
 	_damage_snapshots.clear()
 	_damage_snapshot_frame = -1
@@ -120,6 +139,8 @@ func begin_run() -> void:
 	_by_id.clear()
 	for node in nodes:
 		_by_id[node.id] = node
+	repeatable_node = CATALOG.fallback_node()
+	_by_id[repeatable_node.id] = repeatable_node
 
 	unlocked.clear()
 	owned_relics.clear()
@@ -163,6 +184,7 @@ func begin_run() -> void:
 	_dice_rate_mod = null
 	_dice_crit_mod = null
 	_relic_source_serial = 0
+	_potential_serial = 0
 
 
 func bind_player(player_node: Player) -> void:
@@ -178,12 +200,15 @@ func is_unlocked(id: StringName) -> bool:
 	return unlocked.has(id)
 
 
-func record_damage(key: StringName, amount: float) -> void:
-	if amount > 0.0:
-		damage_totals[key] = float(damage_totals.get(key, 0.0)) + amount
+func record_damage(_key: StringName, _amount: float) -> void:
+	pass # Attribution collection removed; keep save/API compatibility.
 
 
 func record_projectile_damage(context: DamageContext, dealt: float) -> void:
+	pass
+
+
+func _legacy_record_projectile_damage(context: DamageContext, dealt: float) -> void:
 	if dealt <= 0.0:
 		return
 	if context.has_tag(&"blackhole"):
@@ -235,7 +260,12 @@ func projectile_bonus_ratios(stats: StatBlock, color_index: int, heavy: bool) ->
 	return projectile_bonus_snapshot(stats, color_index, heavy).ratios
 
 
+var _empty_attribution_snapshot := preload("res://scripts/combat/DamageSnapshot.gd").new()
+
 func projectile_bonus_snapshot(stats: StatBlock, color_index: int, heavy: bool) -> RefCounted:
+	return _empty_attribution_snapshot
+
+func _legacy_projectile_bonus_snapshot(stats: StatBlock, color_index: int, heavy: bool) -> RefCounted:
 	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
 	var frame := Engine.get_physics_frames()
 	var health := player.health if is_instance_valid(player) else 0.0
@@ -394,10 +424,18 @@ func pick_options(count: int, excluded: Array[StringName] = []) -> Array[SkillNo
 		result.append(node)
 		remaining.erase(node)
 
+	# 技能池耗尽：用可重复的「潜能释放」填满剩余位置。
+	while result.size() < count and repeatable_node != null:
+		result.append(repeatable_node)
+
 	return result
 
 
 func unlock(id: StringName, force: bool = false) -> bool:
+	# 潜能释放可重复选择：每次以独立来源叠加修改器，不进入 unlocked 表。
+	if id == REPEATABLE_ID:
+		return _unlock_repeatable()
+
 	var node := get_node_by_id(id)
 	if node == null or unlocked.has(id):
 		return false
@@ -409,6 +447,16 @@ func unlock(id: StringName, force: bool = false) -> bool:
 		_apply_modifier(modifier, node.id)
 
 	_after_unlock(node)
+	return true
+
+
+func _unlock_repeatable() -> bool:
+	if repeatable_node == null or player == null or not is_instance_valid(player):
+		return false
+	var source := StringName("potential_%d" % _potential_serial)
+	_potential_serial += 1
+	for modifier in repeatable_node.modifiers:
+		_apply_modifier(modifier, source)
 	return true
 
 
@@ -478,7 +526,7 @@ func _on_color_changed_impact(new_color: int) -> void:
 		var context := build_hit_context(player, enemy, base_damage, new_color, false)
 		context.add_tag(&"impact")
 		enemy.take_damage(context)
-		# 冲击按“一次弱点命中”结算，因此弱点线的元素附着与处决也会触发。
+		# 独立元素附着已由受伤入口结算；此处补充弱三阶处决判定。
 		if not enemy.is_dead:
 			on_weakness_hit(enemy, base_damage, new_color)
 			try_execute(enemy, true)
@@ -495,7 +543,7 @@ func _on_color_changed_relics(new_color: int) -> void:
 		FX.hit_burst(player.global_position, RunState.color_of(new_color), 35.0, 0.18)
 	var revolvers := relic_count(&"epic_classic_revolver")
 	if revolvers > 0:
-		_revolver_volleys.append({"remaining": 15 * revolvers, "angle": 0.0,
+		_revolver_volleys.append({"remaining": 15, "scale": float(revolvers), "angle": 0.0,
 			"color": new_color, "timer": 0.0})
 		if _revolver_volleys.size() > 3:
 			_revolver_volleys.pop_front()
@@ -686,10 +734,21 @@ func temp_luck() -> float:
 	return _temp_luck
 
 
-## 刷新遗物提供的每店免费重掷次数。
+## 每店免费重掷次数：四面骰 / 六面骰 / 无限面骰各 +1，VIP 卡 +2。
 func free_rerolls() -> int:
 	return relic_count(&"rare_reroll") + relic_count(&"epic_six_sided_die") \
+		+ relic_count(&"epic_infinite_die") \
 		+ 2 * relic_count(&"epic_vip_card")
+
+
+## 升级三选一的重选次数：六面骰每件 +1，无限面骰 +1。
+func level_up_rerolls() -> int:
+	return relic_count(&"epic_six_sided_die") + relic_count(&"epic_infinite_die")
+
+
+## Boss 宝箱（武器三选一）的重选次数：无限面骰 +1。
+func weapon_reward_rerolls() -> int:
+	return relic_count(&"epic_infinite_die")
 
 
 ## 子弹壳：每层 10% 连射概率，最多 3 层。
@@ -751,10 +810,8 @@ func energy_max_bonus() -> int:
 	var bonus := 0
 	if is_unlocked(&"energy_1"):
 		bonus += 1
-	if is_unlocked(&"energy_3"):
-		bonus += 1
 	if is_unlocked(&"energy_4"):
-		bonus += 3
+		bonus += 4
 	return bonus
 
 
@@ -764,15 +821,16 @@ func energy_regen_multiplier() -> float:
 		multiplier += 0.30
 	if is_unlocked(&"energy_2"):
 		multiplier += 0.10
-	if is_unlocked(&"energy_3") and RunState.max_energy > 0.0:
-		if RunState.energy < RunState.max_energy * 0.5:
-			multiplier += 0.50
+	if is_unlocked(&"energy_3"):
+		multiplier += 0.20
+	if is_unlocked(&"energy_4") and RunState.energy < RunState.max_energy * 0.5:
+		multiplier += 1.0
 	multiplier += 0.20 * float(relic_count(&"rare_battery"))
 	return multiplier
 
 
 func fire_rate_cap_multiplier() -> float:
-	return 9.0 if is_unlocked(&"fire_4") else 3.0
+	return 6.0 if is_unlocked(&"fire_4") else 3.0
 
 
 ## Once per trigger, independent of pellet count; secondary attacks never roll again.
@@ -836,6 +894,12 @@ func get_super_crit_chance() -> float:
 
 ## 一次命中所需的全部伤害规则：颜色、弱点、暴击/超暴击、冰附着。
 ## allow_super_crit = false 时只允许普通暴击（冲击释放器等固定弱点伤害用）。
+func sniper_damage_bonus(target_position: Vector2) -> float:
+	var stacks := relic_count(&"epic_sniper_scope")
+	if stacks <= 0 or not is_instance_valid(player): return 0.0
+	var cells := player.global_position.distance_to(target_position)/GridBackground.major_spacing_world
+	return float(stacks)*clampf((cells-4.0)/6.0,0.0,1.0)
+
 func build_hit_context(
 	source: Node,
 	target: Enemy,
@@ -860,6 +924,12 @@ func build_hit_context(
 		return context
 
 	# 无色分身不参与颜色克制，也不受同色减伤。
+	if source is Projectile and is_unlocked(&"shotgun_2"):
+		var shot := source as Projectile
+		var near_range := player.body_radius*4.0 if is_instance_valid(player) else 48.0
+		var bonus := 2.0*clampf(1.0-shot.distance_traveled/maxf(1.0,near_range),0.0,1.0)
+		base_damage *= 1.0+bonus
+		if bonus > 0.0: target.apply_knockback(shot.global_position-shot.direction*12.0,150.0*bonus,0.15)
 	var defender_color := target.damage_color_at(context.hit_position)
 	context.relation = RunState.color_relation(color_index, defender_color) if color_index >= 0 else &"neutral"
 	context.color_multiplier = RunState.color_multiplier(color_index, defender_color) if color_index >= 0 else 1.0
@@ -871,16 +941,21 @@ func build_hit_context(
 
 	var crit_chance := get_crit_chance(target)
 	var crit_damage := get_crit_damage(target)
+	if is_weakness and is_unlocked(&"weak_2"):
+		crit_chance += 0.20
+		crit_damage += 0.50
 	var super_chance := get_super_crit_chance()
 
 	if is_unlocked(&"crit_4"):
 		super_chance += maxf(0.0, crit_chance - 1.0)
 	crit_chance = minf(1.0, crit_chance)
 
+	context.base_damage = base_damage
 	var is_super := allow_crit and allow_super_crit and super_chance > 0.0 and RunState.rng.randf() < super_chance
 	var is_crit := allow_crit and (is_super or RunState.rng.randf() < crit_chance)
 
 	if is_super:
+		if not is_weakness and is_unlocked(&"weak_2"): crit_damage += 0.50
 		# 超暴击强制按弱点结算，并吃两次暴伤。
 		is_weakness = true
 		multiplier = weakness_multiplier()
@@ -898,34 +973,17 @@ func build_hit_context(
 	if is_weakness:
 		context.add_tag(&"weakness")
 
-	if is_unlocked(&"weak_3") and target.has_ice():
-		# 元素伤害吃弱点倍率，但不吃这次射击的暴击倍率。
-		var ice_damage := base_damage * weakness_multiplier() * 0.20 * elemental_multiplier()
-		context.elemental_bonus = ice_damage
-		context.amount += ice_damage
-		context.add_tag(&"ice")
 
 	return context
 
 
 ## 弱点命中后的元素附着。
-func on_weakness_hit(enemy: Enemy, base_damage: float, color_index: int) -> void:
-	if not is_unlocked(&"weak_3") or enemy == null or enemy.is_dead:
-		return
-
-	var elemental := elemental_multiplier()
-	match color_index:
-		ColorType.RED:
-			enemy.apply_burn(base_damage * 2.0 * weakness_multiplier() * elemental)
-		ColorType.GREEN:
-			enemy.apply_poison(base_damage * 0.45 * weakness_multiplier() * elemental)
-		ColorType.BLUE:
-			enemy.apply_slow(0.25 * elemental, 3.0)
-			enemy.apply_ice(3.0)
+func on_weakness_hit(_enemy: Enemy, _base_damage: float, _color_index: int) -> void:
+	pass # Attachment now belongs to the independent elemental branch.
 
 
 func try_execute(enemy: Enemy, is_weakness: bool) -> void:
-	if not is_unlocked(&"weak_4") or enemy == null or enemy.is_dead or not is_weakness or not enemy.can_be_executed():
+	if not is_unlocked(&"weak_3") or enemy == null or enemy.is_dead or not is_weakness or not enemy.can_be_executed():
 		return
 	if enemy.max_health <= 0.0 or enemy.health <= 0.0:
 		return
@@ -938,6 +996,7 @@ func try_execute(enemy: Enemy, is_weakness: bool) -> void:
 			Color(2.6, 0.4, 0.55),
 			18
 		)
+		element_combat.weak_kill(enemy)
 		enemy.execute()
 
 
@@ -981,7 +1040,7 @@ func apply_splash(
 		if not (node is Enemy):
 			continue
 		var enemy := node as Enemy
-		if enemy == excluded or enemy.is_dead:
+		if enemy == excluded or enemy.is_dead or (is_instance_valid(player) and not player.projectile_manager.projectile_visible_bounds().has_point(enemy.global_position)):
 			continue
 		var reach := radius + enemy.radius
 		if world_position.distance_squared_to(enemy.global_position) > reach * reach:
@@ -995,9 +1054,16 @@ func apply_splash(
 	FX.shockwave(world_position, color, radius, 0.26, EnergyBurst.STYLE_SPLASH)
 
 
-func try_gold_on_hit(world_position: Vector2) -> void:
-	if is_unlocked(&"gold_4") and RunState.rng.randf() < 0.2:
-		Pickups.spawn_gold(world_position, 1)
+## 点石成金：命中 20% 概率直接获得 1 金币（不生成地面掉落），吃金币倍率。
+## 隐藏限制：每秒最多生效 GOLD_HIT_PROC_CAP 次（不写进描述）。
+func try_gold_on_hit(_world_position: Vector2) -> void:
+	if not is_unlocked(&"gold_4"):
+		return
+	if _gold_hit_procs >= GOLD_HIT_PROC_CAP:
+		return
+	if RunState.rng.randf() < 0.2:
+		_gold_hit_procs += 1
+		RunState.add_gold(1)
 
 
 func on_gold_gained(amount: int) -> void:
@@ -1077,6 +1143,12 @@ func _process(delta: float) -> void:
 	_tick_soul(delta)
 	_tick_revolver(delta)
 
+	# 点石成金隐藏上限：每秒归零点石成金的生效计数。
+	_gold_hit_window -= delta
+	if _gold_hit_window <= 0.0:
+		_gold_hit_window = 1.0
+		_gold_hit_procs = 0
+
 
 func _tick_revolver(delta: float) -> void:
 	if _revolver_volleys.is_empty() or player.projectile_manager == null or player.weapon == null:
@@ -1089,7 +1161,7 @@ func _tick_revolver(delta: float) -> void:
 			player.projectile_manager.fire(
 				player.global_position + direction * (player.body_radius + 8.0),
 				direction, player.weapon.stats, int(volley["color"]),
-				player.weapon.core, false, 1.0, 1.0, 1.0, 1.0, true, &"revolver")
+				player.weapon.core, false, float(volley.get("scale", 1.0)), 1.0, 1.0, 1.0, true, &"revolver")
 			volley["angle"] = float(volley["angle"]) + TAU / 15.0
 			volley["remaining"] = int(volley["remaining"]) - 1
 			volley["timer"] = float(volley["timer"]) + 0.035
@@ -1179,8 +1251,7 @@ func _on_energy_spent(amount: float) -> void:
 			_energy_buff_timers.append(5.0)
 		_ensure_dynamic_modifiers()
 		_update_energy_buff()
-	if is_unlocked(&"energy_4") and RunState.rng.randf() < 0.20:
-		RunState.restore_energy_full()
+
 
 
 func _on_enemy_killed(enemy: Node, _gold: int, _xp: float) -> void:
@@ -1192,8 +1263,7 @@ func _on_enemy_killed(enemy: Node, _gold: int, _xp: float) -> void:
 			_giant_kills = 0
 			player.heal(0.5)
 	var death_position := (enemy as Enemy).global_position
-	if is_unlocked(&"shotgun_2"):
-		_shotgun_death_burst(death_position)
+
 	try_spawn_chest(death_position)
 
 
@@ -1465,8 +1535,20 @@ func _apply_modifier(modifier: StatModifierResource, source: StringName) -> void
 	player.apply_stat_modifier(copy)
 
 
+func grant_energy_skill_relic() -> void:
+	var pool: Array[RelicResource] = []
+	# Combat skill items only; economic/exploration triggers are excluded. The rarity floor excludes microglow impact releaser.
+	for relic in relics:
+		if relic.skill_item and relic.rarity >= RelicResource.RARITY_EPIC and (relic.max_stacks <= 0 or relic_count(relic.id) < relic.max_stacks) and (not relic.unique or relic_count(relic.id) == 0): pool.append(relic)
+	if pool.is_empty(): return
+	var gift := pool[RunState.rng.randi_range(0,pool.size()-1)]
+	if grant_relic(gift.id): FX.text_popup(player.global_position+Vector2(0,-30),"获得"+gift.display_name,Color(1,0.7,0.2),18)
+
+
 func _after_unlock(node: SkillNodeResource) -> void:
 	match node.id:
+		&"energy_3", &"energy_4":
+			grant_energy_skill_relic()
 		&"path_demon_1":
 			_grant_relic(&"demon")
 		&"path_angel_1":
@@ -1695,10 +1777,6 @@ func grant_relic(id: StringName, value_multiplier: float = 1.0) -> bool:
 		EventBus.weapon_reward_requested.emit("家传神兵")
 	if relic.id == &"rare_golden_apple":
 		player.heal(player.max_health)
-	elif relic.id == &"rare_bond":
-		RunState.add_gold_debt(-300)
-	elif relic.id == &"rare_high_bond":
-		RunState.add_gold_debt(-1000)
 	elif relic.id == &"rare_ounce_soul":
 		soul_kills += 50
 	elif relic.id == &"demon_pointed_vessel":

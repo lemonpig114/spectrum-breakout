@@ -53,6 +53,9 @@ var _free_rerolls := 0
 var _heal_used := false
 var _shelf_bonus_used := false
 var _time := 0.0
+var _card_hover := {}
+var _buy_all_deadline := -1
+const BUY_ALL_CONFIRM_MS := 650
 var _font: Font
 
 
@@ -64,6 +67,7 @@ func _ready() -> void:
 
 
 func open(player_node: Player) -> void:
+	_buy_all_deadline = -1
 	_player = player_node
 	_rerolls = 0
 	_reroll_cost = _next_reroll_cost()
@@ -95,6 +99,7 @@ func save_data() -> Dictionary:
 
 
 func restore_data(data: Dictionary, player_node: Player) -> void:
+	_buy_all_deadline = -1
 	_player = player_node
 	_offers.clear()
 	for id in data.offers:
@@ -113,6 +118,7 @@ func restore_data(data: Dictionary, player_node: Player) -> void:
 
 
 func close() -> void:
+	_buy_all_deadline = -1
 	visible = false
 	_offers.clear()
 	_offer_prices.clear()
@@ -125,6 +131,8 @@ func close() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	for i in _offers.size():
+		_card_hover[i] = lerpf(float(_card_hover.get(i, 0)), 1.0 if _hover == i else 0.0, 1-exp(-18*delta))
 	_time += delta
 	_font = ThemeDB.fallback_font
 	_appear = minf(1.0, _appear + delta * 7.0)
@@ -174,7 +182,28 @@ func _upgrade_price() -> int:
 	return int(round(UPGRADE_BASE * time_factor * (1.0 + 0.8 * level + UPGRADE_GROWTH * level * level * level)))
 
 
+func _request_buy_all() -> void:
+	if not visible: return
+	var now := Time.get_ticks_msec()
+	if _buy_all_deadline >= now:
+		_buy_all_deadline = -1
+		var purchased := 0
+		var count := _offers.size()
+		for i in count:
+			if i >= _sold.size() or _sold[i]: continue
+			if _offer_prices[i] > 0 and RunState.gold < _offer_prices[i]: continue
+			_buy(i)
+			if _sold[i]: purchased += 1
+		_flash("已购买 %d 件商品" % purchased,purchased > 0)
+	else:
+		_buy_all_deadline = now+BUY_ALL_CONFIRM_MS
+		_flash("再点一次，确认购买当前可购买商品",true)
+		_message_time = float(BUY_ALL_CONFIRM_MS)/1000.0
+	queue_redraw()
+
+
 func _buy(index: int) -> void:
+	_buy_all_deadline = -1
 	if index < 0 or index >= _offers.size():
 		return
 	if _sold[index]:
@@ -192,6 +221,7 @@ func _buy(index: int) -> void:
 		_flash("无法获得这件遗物", false)
 		return
 
+	CardFeedback.play(self, _card_rects()[index], _accent_of(relic))
 	_sold[index] = true
 	Skills.shop_purchases += 1
 	if relic.id == &"epic_vip_card":
@@ -227,6 +257,7 @@ func _maybe_award_shelf_bonus() -> void:
 
 
 func _reroll() -> void:
+	_buy_all_deadline = -1
 	var paid := false
 	if _free_rerolls > 0:
 		_free_rerolls -= 1
@@ -252,6 +283,7 @@ func _reroll() -> void:
 
 ## 捐款升级：+1 货架格，并立刻补上第 N+1 件商品。
 func _upgrade() -> void:
+	_buy_all_deadline = -1
 	if not Skills.can_upgrade_shop():
 		_flash("货架已经满格了", false)
 		return
@@ -296,6 +328,7 @@ func _upgrade() -> void:
 
 
 func _heal() -> void:
+	_buy_all_deadline = -1
 	if _heal_used:
 		_flash("这次已经回复过了", false)
 		return
@@ -549,7 +582,13 @@ func _draw_merchant_speech(top: float, alpha: float) -> void:
 		Color(1.0, 0.94, 0.77, fade))
 
 
-func _draw_card(
+func _draw_card(rect: Rect2, relic: RelicResource, index: int, hovered: bool, alpha: float) -> void:
+	CardFeedback.zoom_begin(self, rect, 1.0 + 0.035 * float(_card_hover.get(index, 0)))
+	_draw_card_contents(rect, relic, index, hovered, alpha)
+	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_card_contents(
 	rect: Rect2,
 	relic: RelicResource,
 	index: int,
@@ -714,6 +753,7 @@ func _draw_buttons(offset: float, alpha: float) -> void:
 		reroll_text = "免费重掷 · 剩余 %d" % _free_rerolls
 	_draw_button(rects[2], reroll_text, _hover_button == 2, true, alpha, GOLD_DIM)
 
+	_draw_button(rects[4], "再次点击确认" if _buy_all_deadline >= Time.get_ticks_msec() else ("全部购买" if GameInput.touch_controls_active else "全部购买 (双击/B×2)"), _hover_button == 4, true, alpha, GOLD_DIM)
 	_draw_button(rects[3], "离开" if GameInput.touch_controls_active else "离开 (Esc)",
 		_hover_button == 3, true, alpha, Color(0.7, 0.7, 0.75, 1.0))
 
@@ -828,18 +868,16 @@ func _card_rects() -> Array[Rect2]:
 
 func _button_rects() -> Array[Rect2]:
 	var y := _grid_bottom() + 22.0
-	var widths: Array[float] = [170.0, 230.0, 190.0, 140.0]
-	const GAP := 16.0
-	var total := 0.0
-	for width in widths:
-		total += width
-	total += GAP * float(widths.size() - 1)
-
+	var widths: Array[float] = [160.0,210.0,180.0,120.0,190.0]
+	const GAP := 12.0
+	var total := GAP*4.0
+	for width in widths: total += width
 	var rects: Array[Rect2] = []
-	var x := (size.x - total) * 0.5
-	for width in widths:
-		rects.append(Rect2(Vector2(x, y), Vector2(width, 40.0)))
-		x += width + GAP
+	rects.resize(5)
+	var x := (size.x-total)*0.5
+	for index in [0,1,2,4,3]:
+		rects[index] = Rect2(Vector2(x,y),Vector2(widths[index],40))
+		x += widths[index]+GAP
 	return rects
 
 
@@ -931,6 +969,9 @@ func _gui_input(event: InputEvent) -> void:
 			elif button == 2:
 				accept_event()
 				_reroll()
+			elif button == 4:
+				accept_event()
+				_request_buy_all()
 			elif button == 3:
 				accept_event()
 				_leave()
@@ -966,6 +1007,10 @@ func _input(event: InputEvent) -> void:
 			index = 8
 		KEY_0, KEY_KP_0:
 			index = 9
+		KEY_B:
+			_request_buy_all()
+			get_viewport().set_input_as_handled()
+			return
 		KEY_U:
 			_upgrade()
 			get_viewport().set_input_as_handled()

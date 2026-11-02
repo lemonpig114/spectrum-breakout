@@ -1,22 +1,24 @@
 extends Node
 
 const VERSION := 1
+const SKILL_BALANCE_REVISION := 3
 const HEX_BOSS_FIELDS := ["global_position", "health", "max_health", "color_index", "rotation", "velocity",
 	"edge_max_health", "edge_health", "edge_colors", "_fragment_color", "_vertices", "_morph_from", "_morph_to", "_morph_time", "_join_edge",
 	"_spin", "_dash_cd", "_dash_left", "_windup", "_dash_direction", "_fragment_a", "_fragment_b",
 	"_fragment_age", "_last_edge", "_edge_flash", "_crush_frame", "_resist_time", "_contact_cooldown",
 	"_burn_ticks", "_burn_cursor", "_burn_pending", "_poison_dps", "_slow", "_slow_time", "_ice_time",
-	"vulnerability", "_vulnerability_applied"]
+	"vulnerability", "_vulnerability_applied", "element_layers", "element_reaction_until"]
 const AUTO_INTERVAL := 10.0
 var storage_path := "user://run_save.dat"
 var pending: Dictionary = {}
 var _main: WeakRef
 var _clock := 0.0
 const RUN_FIELDS := ["elapsed", "gold", "xp", "level", "energy", "max_energy", "color_index",
-	"_xp_fraction", "_gold_fraction", "_income_accum", "_dot_clock", "_dot_bucket"]
+	"_xp_fraction", "_gold_fraction", "_income_clock", "_dot_clock", "_dot_bucket", "_element_dot_clock", "_element_dot_bucket"]
 const PLAYER_FIELDS := ["health", "global_position", "_fire_cooldown", "_heavy_timer", "_heavy_primed",
 	"_altar_trades", "_distance_traveled", "_speed_burst_time", "_invuln"]
 const SKILL_FIELDS := ["shop_level", "shop_purchases", "shop_rerolls", "_weapon_cache_offered", "soul_kills",
+	"_potential_serial",
 	"demon_shields", "_demon_shield_timer", "_demon_shield_fraction", "_lucifer_capacity", "_lucifer_healing_damage",
 	"_soul_timer", "_energy_buff_timers", "_giant_kills", "guardian_shields", "color_shield", "_travel_distance",
 	"_temp_luck", "_temp_luck_time", "_adrenaline_time", "_dice_time", "_dice_roll", "_relic_source_serial",
@@ -32,7 +34,7 @@ const BOSS_FIELDS := ["global_position", "health", "max_health", "color_index", 
 	"_windup_total", "_script_index", "_script_timer", "_hammer_cooldown", "_dash_cooldown", "_dash_target",
 	"_dash_origin", "_dash_duration", "_dash_elapsed", "_summon_points", "_pending_color",
 	"_burn_ticks", "_burn_cursor", "_burn_pending", "_poison_dps", "_slow", "_slow_time", "_ice_time",
-	"vulnerability", "_vulnerability_applied", "_contact_cooldown"]
+	"vulnerability", "_vulnerability_applied", "_contact_cooldown", "element_layers", "element_reaction_until"]
 
 
 func _ready() -> void:
@@ -101,16 +103,17 @@ func snapshot(main: Node) -> Dictionary:
 	for relic in Skills.owned_relics:
 		relic_ids.append(relic.id)
 	var ui := {"levels": main._level_ups_pending, "weapon_rewards": main._weapon_rewards.duplicate(),
-		"level_options": [], "rerolls": main.level_up_panel._rerolls_left, "weapon_choices": []}
+		"level_options": [], "rerolls": main.level_up_panel._rerolls_left, "weapon_choices": [],
+		"weapon_rerolls": main.weapon_choice_panel._rerolls_left, "weapon_primary_mode": main.weapon_choice_panel._primary_mode}
 	if main.level_up_panel.visible:
 		for node in main.level_up_panel._options:
 			ui.level_options.append(node.id)
 	if main.weapon_choice_panel.visible:
 		ui.weapon_choices = main.weapon_choice_panel._choices.duplicate()
-	var data := {"version": VERSION, "character": RunState.selected_character_id,
+	var data := {"skill_balance_revision": SKILL_BALANCE_REVISION, "element_clock": Skills.element_combat.clock, "element_fields": Skills.element_combat.fields.duplicate(true), "version": VERSION, "character": RunState.selected_character_id,
 		"run": _fields(RunState, RUN_FIELDS), "player": _fields(p, PLAYER_FIELDS),
 		"player_stats": p.stats.save_data(), "weapon_stats": p.weapon.stats.save_data(),
-		"weapons": p.weapon.owned_forms.duplicate(), "skills": skill_ids, "relics": relic_ids,
+		"primary_weapon": p.weapon.primary_form, "weapons": p.weapon.owned_forms.duplicate(), "skills": skill_ids, "relics": relic_ids,
 		"skill_state": _fields(Skills, SKILL_FIELDS), "mod_refs": refs, "ui": ui,
 		"director": _fields(Director, DIRECTOR_FIELDS), "rng_state": RunState.rng.state,
 		"rng_seed": RunState.rng.seed, "director_rng_state": Director._rng.state, "director_rng_seed": Director._rng.seed,
@@ -131,6 +134,10 @@ func snapshot(main: Node) -> Dictionary:
 	if is_instance_valid(Director.altar) and not Director.altar._leaving:
 		data.altar = _fields(Director.altar, ["global_position", "_lifetime", "_traded"])
 		data.altar.open = main.altar_panel.visible
+	# 未拾取的 Boss 宝箱：保存位置，读档后在原地重生（已开箱则奖励已在 ui.weapon_rewards 里）。
+	var pending_chest: Variant = main.get("_boss_chest")
+	if is_instance_valid(pending_chest) and pending_chest is BossChest and pending_chest.is_pending():
+		data.boss_chest = {"position": pending_chest.global_position}
 	if main.shop_panel.visible:
 		data.shop = main.shop_panel.save_data()
 	return data
@@ -189,6 +196,9 @@ func restore_run(main: Node, data: Dictionary) -> void:
 		var node := Skills.get_node_by_id(StringName(id))
 		if node != null:
 			Skills.unlocked[node.id] = node
+	Skills.element_combat.clock = float(data.get("element_clock",0.0))
+	Skills.element_combat.fields.assign(data.get("element_fields",[]))
+	Skills.element_combat.queue_redraw()
 	Skills.owned_relics.clear()
 	for id in data.relics:
 		var relic := Skills.get_relic(StringName(id))
@@ -196,8 +206,18 @@ func restore_run(main: Node, data: Dictionary) -> void:
 			Skills.owned_relics.append(relic)
 	for id in data.weapons:
 		p.weapon.acquire_form(StringName(id))
+	if data.has("primary_weapon"):
+		p.weapon.select_primary(StringName(data.primary_weapon))
+	else:
+		for candidate in WeaponRuntime.PRIMARY_ORDER:
+			if p.weapon.select_primary(candidate): break
 	p.stats.restore_data(data.player_stats)
 	p.weapon.stats.restore_data(data.weapon_stats)
+	if not p.weapon.stats._base.has(&"range"):
+		p.weapon.stats.set_base(&"range", 600.0)
+	if not p.weapon.stats._base.has(&"range_mult"):
+		p.weapon.stats.set_base(&"range_mult", 1.0)
+	migrate_legacy_skill_balance(p, int(data.get("skill_balance_revision",0)))
 	_restore_fields(Skills, data.get("skill_state", {}))
 	for key in MOD_REFS:
 		Skills.set(key, null)
@@ -207,6 +227,7 @@ func restore_run(main: Node, data: Dictionary) -> void:
 				if source != &"" and modifier.source == source:
 					Skills.set(key, modifier)
 	_restore_fields(RunState, data.run)
+	if int(data.get("skill_balance_revision",0)) < SKILL_BALANCE_REVISION: RunState.refresh_energy_caps()
 	p.refresh_derived()
 	_restore_fields(p, data.player)
 	p.color_index = RunState.color_index
@@ -241,6 +262,9 @@ func restore_run(main: Node, data: Dictionary) -> void:
 			var state: Dictionary = data.altar.duplicate()
 			state.erase("open")
 			_restore_fields(altar, state)
+	# 恢复未拾取的 Boss 宝箱（静默重生，不重播落地音效）。
+	if data.has("boss_chest"):
+		main._spawn_boss_chest(data.boss_chest.position, true)
 	_restore_fields(Director, data.get("director", {}))
 	_restore_fields(main.get_node("World/BlackHoleField"), data.get("hole", {}))
 	main.get_node("World/BlackHoleField")._request_redraw()
@@ -286,7 +310,18 @@ func restore_ui(main: Node, data: Dictionary) -> void:
 	elif main._level_ups_pending > 0:
 		main._open_next_level_up()
 	if not ui.get("weapon_choices", []).is_empty():
-		main.weapon_choice_panel.restore_reward(main.player, ui.weapon_choices)
+		main.weapon_choice_panel.restore_reward(main.player, ui.weapon_choices, int(ui.get("weapon_rerolls", 0)), bool(ui.get("weapon_primary_mode", false)))
 		main.hud_control.hide()
 		RunState.request_pause(&"weapon_reward")
 	main._flush_pending_events()
+
+
+func migrate_legacy_skill_balance(p: Player, revision: int) -> void:
+	if revision >= SKILL_BALANCE_REVISION: return
+	var ids: Array[StringName] = [&"fire_4"]
+	if revision < 2: ids.append_array([&"weak_2", &"shotgun_1", &"shotgun_4"])
+	for id in ids:
+		p.stats.remove_modifiers_from(id)
+		p.weapon.stats.remove_modifiers_from(id)
+		if Skills.is_unlocked(id):
+			for modifier in Skills.get_node_by_id(id).modifiers: Skills._apply_modifier(modifier,id)

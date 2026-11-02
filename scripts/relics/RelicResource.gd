@@ -1,6 +1,8 @@
 class_name RelicResource
 extends Resource
 
+@export var skill_item := false
+
 ## 独立遗物。正负数值杠杆 + 特殊规则标签，商店在后续里程碑接入。
 
 const RARITY_DUST := 0

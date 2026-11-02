@@ -257,23 +257,23 @@ func spawn_rate(at_time: float = -1.0) -> float:
 
 func _phase_rate(phase: int) -> float:
 	if phase >= 12:
-		return [12.0, 10.0, 8.0, 10.0, 8.0][(phase - 12) % 5]
+		return [12.0, 10.0, 6.5, 10.0, 8.0][(phase - 12) % 5]
 	match phase:
 		0: return 3.0
 		1: return 4.0
 		2: return 6.0
-		3: return 13.0
+		3: return 10.0
 		4: return 6.0
 		5: return 8.0
 		6: return 12.0
-		7: return 6.0
+		7: return 5.0
 		8: return 8.0
-		10: return 6.0
+		10: return 5.0
 		_: return 10.0
 
 
 func _spawn_batch_size(phase: int) -> int:
-	return 13 if phase == 3 else 1
+	return 10 if phase == 3 else 1
 
 
 func _spawn_interval(phase: int) -> float:
@@ -290,10 +290,10 @@ func _phase_type(phase: int, index: int) -> EnemyTypeResource:
 			var cycle := index % 12
 			wanted = &"ranged_plane" if cycle < 2 else (&"chaser_square" if cycle < 6 else (&"chaser_triangle" if cycle < 10 else &"chaser_round"))
 		7: wanted = &"chaser_hex"
-		8: wanted = &"chaser_hex" if index % 8 < 6 else &"chaser_round"
-		9: wanted = &"chaser_hex" if index % 10 < 8 else &"ranged_plane"
+		8: wanted = &"chaser_hex" if index % 8 < 5 else &"chaser_round"
+		9: wanted = &"chaser_hex" if index % 10 < 6 else &"ranged_plane"
 		10: wanted = &"chaser_hex"
-		11: wanted = &"chaser_hex" if index % 10 < 6 else &"ranged_plane"
+		11: wanted = &"chaser_hex" if index % 10 < 5 else &"ranged_plane"
 		_:
 			wanted = [&"chaser_triangle", &"chaser_square", &"chaser_hex", &"chaser_round", &"ranged_plane"][(phase - 12) % 5] if phase >= 12 else &"chaser_triangle"
 	for enemy_type in _enemy_types:
@@ -493,12 +493,13 @@ func health_multiplier(at_time: float = -1.0) -> float:
 	if seconds < 15.0:
 		return 0.8
 	if seconds >= 540.0:
-		# 无尽模式：基础 30 倍，X 从 5 起、每 100 秒 +1。
-		return 30.0 + 5.0 + floorf((seconds - 540.0) / 100.0)
+		# 无尽前两分钟维持35倍，660秒起每分钟再乘1.3。
+		if seconds < 660.0: return 35.0
+		return 35.0 * pow(1.3,1.0+floorf((seconds-660.0)/60.0))
 	match spawn_phase(at_time):
 		0, 1: return 1.0
-		2: return 1.5
-		3: return 2.0
+		2: return 1.2
+		3: return 1.7
 		4: return 2.5
 		5: return 3.5
 		6: return 5.0

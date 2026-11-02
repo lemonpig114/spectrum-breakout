@@ -5,6 +5,8 @@ extends Node
 
 const ENERGY_MAX := 3.0
 const ENERGY_REGEN := 0.4
+## 债券等“收益”遗物每 10 秒结算一次。
+const INCOME_INTERVAL := 10.0
 const EARLY_XP_REQUIREMENTS := [6, 12, 20, 30]
 const COLOR_RULES_PATH := "res://data/colors/default_color_rules.tres"
 
@@ -29,8 +31,10 @@ var _last_time_sent := -1.0
 var _pause_reasons: Dictionary = {}
 var _xp_fraction := 0.0
 var _gold_fraction := 0.0
-## 债券等“收益”遗物的金币累积器，避免每帧 add_gold(0)。
-var _income_accum := 0.0
+## 债券等“收益”遗物的结算计时器，满 10 秒结算一次。
+var _income_clock := 0.0
+var _element_dot_clock := 0.0
+var _element_dot_bucket := 0
 var _dot_clock := 0.0
 var _dot_bucket := 0
 
@@ -64,7 +68,9 @@ func begin_run() -> void:
 	_last_time_sent = -1.0
 	_xp_fraction = 0.0
 	_gold_fraction = 0.0
-	_income_accum = 0.0
+	_income_clock = 0.0
+	_element_dot_clock = 0.0
+	_element_dot_bucket = 0
 	_dot_clock = 0.0
 	_dot_bucket = 0
 
@@ -131,6 +137,12 @@ func _process(delta: float) -> void:
 		_dot_bucket = (_dot_bucket + 1) % 4
 		EventBus.dot_tick.emit(_dot_bucket)
 
+	_element_dot_clock += delta
+	while _element_dot_clock >= 0.25:
+		_element_dot_clock -= 0.25
+		_element_dot_bucket = (_element_dot_bucket+1)%4
+		EventBus.element_tick.emit(_element_dot_bucket)
+
 	if energy < max_energy:
 		var regen := ENERGY_REGEN * Skills.energy_regen_multiplier()
 		energy = minf(max_energy, energy + regen * delta)
@@ -138,12 +150,11 @@ func _process(delta: float) -> void:
 
 	var income := Skills.gold_income()
 	if income > 0.0:
-		_income_accum += income * delta
-		var payout := int(floor(_income_accum))
-		if payout > 0:
-			_income_accum -= float(payout)
-			# 债券是固定利息，直接入账，不走 gold_gain 倍率。
-			add_gold_debt(payout)
+		_income_clock += delta
+		while _income_clock >= INCOME_INTERVAL:
+			_income_clock -= INCOME_INTERVAL
+			# 债券固定利息每 10 秒结算一次，直接入账，不走 gold_gain 倍率。
+			add_gold_debt(int(round(income)))
 
 	if elapsed - _last_time_sent >= 0.1:
 		_last_time_sent = elapsed
@@ -196,7 +207,7 @@ func can_switch_color() -> bool:
 
 
 func switch_energy_cost() -> float:
-	return 1.0 + (1.0 if Skills.relic_count(&"epic_shield_generator") > 0 else 0.0)
+	return 1.0
 
 
 func cycle_color(direction: int = 1) -> bool:
@@ -317,12 +328,25 @@ func debug_grant_levels(count: int) -> void:
 func _xp_threshold(current_level: int) -> int:
 	if current_level >= 1 and current_level <= EARLY_XP_REQUIREMENTS.size():
 		return EARLY_XP_REQUIREMENTS[current_level - 1]
-	var late_level := maxi(0, current_level - 5)
-	var threshold := 8 + current_level * 6 + roundi(0.50 * late_level * late_level)
-	if current_level > 30:
-		var high_level := current_level - 30
-		threshold += 10 * high_level + roundi(0.70 * high_level * high_level)
-	return threshold
+
+	var lv := float(current_level)
+	# 两段主曲线：缓段 6L + 0.25L²，陡段 10L + 0.5L² + 1.5(L-10)²。
+	# L14–26 之间用 smoothstep 混合两段系数，消除 20 级处的断崖。
+	var blend := clampf((lv - 14.0) / 12.0, 0.0, 1.0)
+	blend = blend * blend * (3.0 - 2.0 * blend)
+	var linear := lerpf(6.0, 10.0, blend)
+	var quad := lerpf(0.25, 0.50, blend)
+	var late_quad := lerpf(0.0, 1.5, blend)
+	var threshold := linear * lv + roundf(quad * lv * lv + late_quad * (lv - 10.0) * (lv - 10.0))
+
+	# 30/40/50 级起逐段叠加更陡的高次项，作为软上限。
+	if current_level >= 30:
+		threshold += pow(lv - 30.0, 3.0)
+	if current_level >= 40:
+		threshold += 0.3 * pow(lv - 40.0, 4.0)
+	if current_level >= 50:
+		threshold += pow(lv - 50.0, 4.0)
+	return int(roundf(threshold))
 
 
 func _set_color(target: int) -> bool:

@@ -5,6 +5,7 @@ extends ColorRect
 ## 不走全屏读屏，因此不会把 HUD 一起扭曲。
 
 const RIPPLE_SLOTS := 4
+static var major_spacing_world := 64.0
 
 var _elapsed := 0.0
 var _material: ShaderMaterial
@@ -21,6 +22,7 @@ func _ready() -> void:
 	if _material != null:
 		_material = _material.duplicate() as ShaderMaterial
 		material = _material
+		major_spacing_world = maxf(1.0,float(_material.get_shader_parameter("major_spacing")))
 		_material.set_shader_parameter("rect_size", size)
 		_material.set_shader_parameter("shader_time", 0.0)
 		_push_ripples()

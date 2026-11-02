@@ -7,6 +7,7 @@ const DEBUG_CONSOLE := preload("res://scripts/ui/DebugConsole.gd")
 const PERFORMANCE_RECORDER := preload("res://scripts/game/PerformanceRecorder.gd")
 const BLACK_HOLE_FIELD := preload("res://scripts/skills/BlackHoleField.gd")
 const SUMMON_FIELD := preload("res://scripts/skills/SummonField.gd")
+const BOSS_CHEST := preload("res://scripts/pickups/BossChest.gd")
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const ARENA_RECT := Rect2(-2400.0, -1800.0, 4800.0, 3600.0)
 const FONT_PATH := "res://assets/fonts/NotoSansSC-Variable.ttf"
@@ -44,6 +45,7 @@ var _vacuum_merchant: Merchant
 var _vacuum_timer := 0.0
 var weapon_choice_panel: WeaponChoicePanel
 var _weapon_rewards: Array[String] = []
+var _boss_chest: BossChest
 var debug_console: DebugConsole
 
 
@@ -98,7 +100,7 @@ func _ready() -> void:
 	world.add_child(black_hole)
 	black_hole.setup(player, projectile_manager)
 	if resume_data.is_empty() and player.character != null and player.character.id == &"prism":
-		Skills.grant_relic(&"epic_six_sided_die")
+		Skills.grant_relic(&"epic_infinite_die")
 	if resume_data.is_empty():
 		_debug_grant_relics()
 
@@ -108,6 +110,7 @@ func _ready() -> void:
 	EventBus.enemy_killed.connect(_on_enemy_killed_for_weapon)
 	EventBus.weapon_reward_requested.connect(_queue_weapon_reward)
 	weapon_choice_panel.finished.connect(_on_weapon_reward_finished)
+	pause_panel.weapon_switch_requested.connect(func(): weapon_choice_panel.open_loadout(player))
 	EventBus.level_up.connect(_on_level_up)
 	EventBus.merchant_reached.connect(_on_merchant_reached)
 	EventBus.altar_reached.connect(_on_altar_reached)
@@ -218,7 +221,7 @@ func _open_next_level_up() -> void:
 
 	hud_control.visible = false
 	RunState.request_pause(&"level_up")
-	level_up_panel.open(options, 1 if Skills.relic_count(&"epic_six_sided_die") > 0 else 0)
+	level_up_panel.open(options, Skills.level_up_rerolls())
 
 
 func _on_skill_reroll_requested() -> void:
@@ -412,7 +415,29 @@ func _flush_pending_events() -> void:
 
 func _on_enemy_killed_for_weapon(enemy: Node, _gold: int, _xp: float) -> void:
 	if enemy is Enemy and enemy.type_data != null and enemy.type_data.is_boss:
-		_queue_weapon_reward.call_deferred("Boss 宝箱")
+		# Boss 掉出必须自己捡的宝箱；拾取动画播完才打开武器三选一。
+		_spawn_boss_chest.call_deferred(enemy.global_position)
+
+
+## Boss 宝箱：全程序化绘制，不参与磁吸 / 自动拾取，只能玩家靠近触发。
+## quiet = true 用于读档恢复，跳过落地特效。
+func _spawn_boss_chest(at_position: Vector2, quiet: bool = false) -> void:
+	if RunState.is_dead or world == null:
+		return
+	if _boss_chest != null and is_instance_valid(_boss_chest) and _boss_chest.is_pending():
+		return
+	var chest := BOSS_CHEST.new() as BossChest
+	chest.setup(player)
+	chest.silent_spawn = quiet
+	chest.position = at_position
+	chest.opened.connect(_on_boss_chest_opened)
+	world.add_child(chest)
+	_boss_chest = chest
+
+
+func _on_boss_chest_opened() -> void:
+	_boss_chest = null
+	_queue_weapon_reward("Boss 宝箱")
 
 
 func _queue_weapon_reward(source: String) -> void:
@@ -539,7 +564,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Esc 打开暂停；暂停/升级/商店界面会先自行消费 Esc。
 	if event.is_action_pressed(&"pause") and not RunState.is_dead:
 		if level_up_panel.visible or shop_panel.visible or altar_panel.visible \
-				or pause_panel.visible:
+				or pause_panel.visible or weapon_choice_panel.visible:
 			return
 		if RunState.is_running:
 			_toggle_manual_pause()

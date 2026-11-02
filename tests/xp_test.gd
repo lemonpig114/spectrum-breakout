@@ -9,17 +9,33 @@ func _ready() -> void:
 	EventBus.level_up.connect(func(level: int): levels.append(level))
 	_check([RunState._xp_threshold(1), RunState._xp_threshold(2), RunState._xp_threshold(3), RunState._xp_threshold(4)] == [6, 12, 20, 30], "early thresholds are 6/12/20/30")
 	for level in range(5, 101):
-		var late := level - 5
-		var expected := 8 + level * 6 + roundi(0.50 * late * late)
-		if level > 30:
-			var high := level - 30
-			expected += 10 * high + roundi(0.70 * high * high)
-		if RunState._xp_threshold(level) != expected:
+		var lv := float(level)
+		var blend := clampf((lv - 14.0) / 12.0, 0.0, 1.0)
+		blend = blend * blend * (3.0 - 2.0 * blend)
+		var linear := lerpf(6.0, 10.0, blend)
+		var quad := lerpf(0.25, 0.50, blend)
+		var late_quad := lerpf(0.0, 1.5, blend)
+		var expected := linear * lv + roundf(quad * lv * lv + late_quad * (lv - 10.0) * (lv - 10.0))
+		if level >= 30:
+			expected += pow(lv - 30.0, 3.0)
+		if level >= 40:
+			expected += 0.3 * pow(lv - 40.0, 4.0)
+		if level >= 50:
+			expected += pow(lv - 50.0, 4.0)
+		if RunState._xp_threshold(level) != int(roundf(expected)):
 			failures += 1
-	_check(failures == 0, "levels 5-30 and 30+ follow separate continuous growth curves")
-	_check(RunState._xp_threshold(31) > RunState._xp_threshold(30) and
-		RunState._xp_threshold(40) > 8 + 40 * 6 + roundi(0.50 * 35 * 35),
-		"level thirty onward requires more experience")
+	_check(failures == 0, "levels 5+ follow the blended curve with late high-order terms")
+	_check(RunState._xp_threshold(20) == 385 and RunState._xp_threshold(30) == 1350
+		and RunState._xp_threshold(40) == 3550 and RunState._xp_threshold(50) == 15150,
+		"key thresholds match the new curve")
+	var max_step := 0
+	for level in range(14, 26):
+		max_step = maxi(max_step, RunState._xp_threshold(level + 1) - RunState._xp_threshold(level))
+	_check(max_step <= 130, "no cliff: the L20 blend keeps the per-level jump bounded")
+	_check(RunState._xp_threshold(31) > RunState._xp_threshold(30)
+		and RunState._xp_threshold(40) > RunState._xp_threshold(35)
+		and RunState._xp_threshold(50) > RunState._xp_threshold(45),
+		"higher tiers keep raising the threshold")
 	RunState.add_xp(5)
 	_check(RunState.level == 1 and RunState.xp == 5, "first level does not trigger early")
 	RunState.add_xp(1)
@@ -29,10 +45,10 @@ func _ready() -> void:
 	RunState.add_xp(19)
 	RunState.add_xp(30)
 	_check(RunState.level == 5 and RunState.xp == 0, "68 total XP reaches level five")
-	RunState.add_xp(38)
-	_check(RunState.level == 6 and RunState.xp == 0, "level five keeps its old threshold")
+	RunState.add_xp(36)
+	_check(RunState.level == 6 and RunState.xp == 0, "level five uses its new threshold")
 	RunState.add_xp(100)
-	_check(RunState.level == 8 and RunState.xp == 3, "large XP award resolves multiple levels without loss")
+	_check(RunState.level == 8 and RunState.xp == 1, "large XP award resolves multiple levels without loss")
 	_check(levels == [2, 3, 4, 5, 6, 7, 8], "each level emits exactly one event in order")
 	# 调试连升：跳过 XP，但逐级发事件，供 Main 正常排队三选一。
 	levels.clear()

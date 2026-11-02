@@ -32,7 +32,7 @@ func _test_luck() -> void:
 	for relic in Skills.relics:
 		if relic.brief_description.is_empty() or relic.brief_description.contains("\n"):
 			briefs_complete = false
-	_check(briefs_complete, "all 55 relics provide a one-line brief description")
+	_check(briefs_complete, "all 59 relics provide a one-line brief description")
 	Skills.unlock(&"luck_1")
 	_check(Skills.luck() == 12 and is_equal_approx(Skills.chest_drop_chance(), 0.0132), "first tier unlocks 1.32 percent chest drops")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.10), "base relic conversion is 10 percent")
@@ -40,7 +40,7 @@ func _test_luck() -> void:
 	_check(Skills.luck() == 24 and is_equal_approx(Skills.chest_drop_chance(), 0.0144), "second tier reaches 1.44 percent chest drops")
 	_check(is_equal_approx(Skills.chest_relic_chance(), 0.15), "second tier relic conversion is 15 percent")
 	Skills.unlock(&"luck_3")
-	_check(Skills.luck() == 40 and Skills.relic_count(&"epic_six_sided_die") == 1 and Skills.pending_relic_offers.size() == 1, "tier three gives luck now but queues its relic")
+	_check(Skills.luck() == 40 and Skills.relic_count(&"epic_infinite_die") == 1 and Skills.pending_relic_offers.size() == 1, "tier three gives luck now but queues its relic")
 	Skills.resolve_relic_offer(Skills.pending_relic_offers[0].ticket, false)
 	Skills.unlock(&"luck_4")
 	Pickups.spawn_chest(main.player.global_position + Vector2(700, 0))

@@ -70,7 +70,7 @@ func _physics_process(delta: float) -> void:
 				player.projectile_manager.combat.fire_weapon(global_position + _aim * 18.0, _aim,
 					player.weapon.stats, color_index, false, player.weapon, true,
 					player.stats.get_value(&"summon_damage"))
-				_shot_cooldown = 1.0 / maxf(0.1, player.weapon.get_final_fire_rate())
+				_shot_cooldown = 1.0 / player.effective_fire_rate()
 	queue_redraw()
 
 

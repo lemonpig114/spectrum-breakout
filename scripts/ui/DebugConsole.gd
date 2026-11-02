@@ -8,7 +8,7 @@ const ENEMY_ALIASES := {
 	"triangle": &"chaser_triangle", "square": &"chaser_square",
 	"hex": &"chaser_hex", "plane": &"ranged_plane", "round": &"chaser_round",
 }
-const COMMANDS := ["help", "w", "rw", "r", "bh", "e", "boss", "gold", "xp", "clear", "fps"]
+const COMMANDS := ["help", "w", "rw", "r", "bh", "e", "boss", "gold", "xp", "clear", "fps", "origin"]
 
 var main: Node2D
 var _input: LineEdit
@@ -122,7 +122,7 @@ func _complete() -> void:
 	else:
 		var command := parts[0]
 		prefix = "" if _input.text.ends_with(" ") else parts[-1]
-		var candidates := WEAPONS if command in ["w", "rw"] else (["hex", "square"] if command == "boss" else ENEMY_ALIASES.keys())
+		var candidates := WEAPONS if command in ["w", "rw"] else (["hex", "square"] if command == "boss" else (["100", "1000", "10000"] if command == "origin" else ENEMY_ALIASES.keys()))
 		if command == "r":
 			candidates = ["lucifer", "michael"]
 			for relic in Skills.relics:
@@ -151,7 +151,7 @@ func _submit(raw: String) -> void:
 	_log("> " + line)
 	var args := line.split(" ", false)
 	match args[0]:
-		"help": _log("w 武器名 | rw 武器名 | r 遗物名/ID | bh 阶数 | e 怪名 数量 [red/green/blue] | boss [hex/square] | gold 数量 | xp 数量 | clear | fps")
+		"help": _log("w 武器名 | rw 武器名 | r 遗物名/ID | bh 阶数 | e 怪名 数量 [red/green/blue] | boss [hex/square] | gold 数量 | xp 数量 | origin 层数伤害 | clear | fps")
 		"r": _relic(args)
 		"w": _weapon(args)
 		"bh":
@@ -161,6 +161,17 @@ func _submit(raw: String) -> void:
 			var hole := main.get_node("World/BlackHoleField") as BlackHoleField
 			hole.cast(main.player.global_position + Vector2(180, 0))
 			_log("黑洞技能 %d 阶，已释放" % tier)
+		"origin":
+			if args.size() != 2 or not args[1].is_valid_float() or not is_finite(float(args[1])) or float(args[1]) < 0:
+				_log("用法：origin X，X为非负元素层数伤害，例如 origin 1000")
+			else:
+				var candidates: Array = get_tree().get_nodes_in_group(&"enemies").filter(func(e): return is_instance_valid(e) and not e.is_dead)
+				if candidates.is_empty(): _log("没有存活敌人，先用 e triangle 10 生成")
+				else:
+					var enemy: Enemy = candidates[RunState.rng.randi_range(0,candidates.size()-1)]
+					if Skills.element_combat.trigger_origin(enemy,float(args[1])):
+						_log("已触发源反应：层数伤害 %.1f + 角色伤害，关闭控制台后蓄力1秒爆炸" % float(args[1]))
+					else: _log("反应队列已满")
 		"rw": _remove_weapon(args)
 		"e": _enemies(args)
 		"boss":
@@ -206,7 +217,7 @@ func _weapon(args: PackedStringArray) -> void:
 	var id := StringName(args[1])
 	if main.player.weapon.acquire_form(id):
 		var data: WeaponTraitResource = main.player.weapon.primary_data()
-		_log("已获得：%s；自动主形态：%s" % [args[1], data.display_name])
+		_log("已获得：%s；当前主形态：%s" % [args[1], data.display_name])
 	else:
 		_log("武器已拥有或资源缺失")
 

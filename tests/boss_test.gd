@@ -29,7 +29,7 @@ func _ready() -> void:
 	Director.set("_boss_spawned", false)
 	RunState.start()
 	var boss := Director.spawn_boss_now(Vector2.ZERO)
-	check(boss != null and boss.type_data.is_boss and boss.max_health == 125000.0, "boss inherits the 180-second health multiplier")
+	check(boss != null and boss.type_data.is_boss and boss.max_health == 100000.0, "boss inherits the 180-second health multiplier")
 	check(Director.spawn_boss_now(Vector2.ZERO) == boss, "boss spawns once")
 	boss.set_physics_process(false)
 	var kind := ContentDB.get_enemy(&"chaser_square")

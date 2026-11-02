@@ -20,3 +20,4 @@
 若 Forward+ 包颜色明显接近电脑且性能可接受，再考虑切换 Android 默认渲染器。若性能不佳，保持 Mobile，并依据实机截图给 Mobile 单独做配色校准；优先修正使用高于 `1.0` 的 HDR 特效。无法仅靠同一个 RGB 值保证不同手机屏幕完全一致。
 
 参考：[Godot 4.4 渲染器](https://docs.godotengine.org/en/4.4/tutorials/rendering/renderers.html)、[HDR 2D 与 Glow](https://docs.godotengine.org/en/4.4/tutorials/3d/environment_and_post_processing.html#using-glow-in-2d)、[Android Glow 差异讨论](https://github.com/godotengine/godot/issues/103512)。
+a

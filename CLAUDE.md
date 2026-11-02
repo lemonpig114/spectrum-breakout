@@ -25,8 +25,8 @@ black background, the grid shader, HDR colors (>1.0) and `WorldEnvironment` glow
 - `InstanceBatch.flush()` must queue redraw on its owning `MultiMeshInstance2D` after uploading the buffer:
   Godot 4.4.1 otherwise keeps stale CanvasItem culling bounds and entire moving batches disappear.
   Keep this once per batch/rendered frame. GPU pixel regression: `tests/batch_visibility_test.tscn` (requires rendering).
-- Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, or 2 with Shield Generator.
-- 20 skill branches × 4 tiers = **80 nodes**, **55 relics**, shop, luck/chests, manual pause, altars, audio.
+- Continuous timed survival (no waves). Color cycle RED → GREEN → BLUE; switching costs 1 energy, including with Shield Generator.
+- 21 skill branches × 4 tiers = **84 nodes**, **59 relics**, shop, luck/chests, manual pause, altars, audio.
 - Two unique iridescent relics: Lucifer requires maxed demon/giant/crit; Michael maxed angel/crit/weak.
   Highest shop level7 adds rarity4 weight0.005 deducted from rare0.50→0.495. Both shop-only; no side doubling.
   Lucifer locks HP/maxHP0.5, converts healing to base damage and max hearts to demon shields; shield break kills non-Bosses only.
@@ -53,7 +53,7 @@ Current rules (round 20 + follow-up):
 - Spawn timeline is authoritative in `刷怪浓度.md` / `Director.gd`. Rates at 0/30/60/120/180/240/270/300/330/360/420/480 s:
   3/4/6/13/6/8/12/6/8/10/6/10 per second. Surround rings only 120–180 and 300–330 s; usual cap40→80, former phase100.
 - HP ×0.8 (0–15), ×1 (15–60), ×1.5/2/2.5/3.5/5/6/7/10/15/20 at60/120/180/240/270/300/330/360/420/480 s.
-  Square Boss180s125000HP; HexBoss420s six independent375000HP colored edges, weak-only, neutral/soul5%, death at2edges.
+  Square Boss180s100000HP; HexBoss420s six independent375000HP colored edges, weak-only, neutral/soul5%, death at2edges.
   Breaking an edge heals survivors and rallies existing hex mobs5s. Morph animation + individual dual-layer textured bars, no Boss name.
 - Endless540s: one-time HUD banner; rotate triangle12/s, square10/s, hex8/s, round10/s, plane8/s every15s.
   StartHP×20, add5 every30s. Surviving enemies/Bosses retain birth HP. Save preserves announcement flag and HexBoss edges/action/morph.
@@ -82,7 +82,7 @@ Current rules (round 20 + follow-up):
 | `docs/HISTORY.md` | Compact archived details of rounds 1–19 (round 20 lives in HANDOFF). |
 | `docs/AUDIO.md` | 24 sound ids, source mapping, CC0 licenses, replacement convention. |
 | `docs/SKILLS.md` | All 80 implemented skill nodes by branch: prerequisites, effects, runtime mechanics. |
-| `docs/RELICS.md` | All 55 relics by quality/side: base price, tags, effects, acquisition rules. |
+| `docs/RELICS.md` | All 56 relics by quality/side: base price, tags, effects, acquisition rules. |
 | `docs/DESIGN_NOTES.md` | Quality names, shop/luck/altar economy, design-vs-implementation deltas. |
 | `人类用.md` | User's active design list; implemented items are marked **[complete]**. Re-read before editing because Claude Code may update it. |
 
@@ -292,3 +292,11 @@ inspect the printed line rather than assuming a regression. Screenshot scripts a
 4. Update `HANDOFF.md` (current round), `plan.md` §16 if state changed, `docs/AUDIO.md` for sound
    changes, and `docs/SKILLS.md` / `docs/RELICS.md` / `docs/DESIGN_NOTES.md` for content/economy changes.
 5. Keep `CLAUDE.md` lean — archive round details in `docs/HISTORY.md` instead of growing this file.
+
+## 2026-11-02 武器重构覆盖说明
+
+当前规则以 docs/WEAPONS.md、docs/WEAPON_REWORK_PLAN.md 为准：玩家主动选择主武器，获取新武器不再用固定优先级覆盖。所有8种副效果已替换；黑洞35%吸收、0.2秒原位缩小、不环绕、半秒一跳、爆炸600%。怪群默认线程快照、普通弹原生碰撞保留实测更快路径，范围武器共用72px敌人网格；可用 --centralized-projectile-collision 对照网格扫掠。新增 CardFeedback 共用卡片放大/流光。不要恢复旧专用组合或旧绕弹碰撞。
+
+2026-11-02 技能重构：新增element四阶，弱点不再附着元素，weak_3改处决；能量3/4改回复/道具奖励，左轮叠加加伤不加弹；散弹2改近距增伤，1/4减射程。ElementCombat有界FIFO，冷却期间及死亡传播可同时留多元素，三色真实共存触发源反应，禁止以短时间颜色历史替代。完整数值见docs/SKILLS.md、技能设计表.md。
+
+2026-11-02 新包前变更：无尽前2分钟35x，660秒起每60秒×1.3；闪电280，后续链90%/穿透45%。武器按相机可见边界停止/返航。射速4最终1.30，cap6（普通cap3的2倍），迁移修订3。商店650ms双击或B×2全部购买当前可购买货品。v0.3.0-test.2 Android code4。

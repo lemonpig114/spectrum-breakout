@@ -15,6 +15,9 @@ static func draw_branch(
 	var r := maxf(2.0, radius)
 	var width := maxf(1.0, r * 0.13)
 	match branch:
+		&"element":
+			for i in 3:
+				canvas.draw_circle(center+Vector2.from_angle(TAU*i/3.0)*r*0.48,r*0.38,color)
 		&"blackhole":
 			canvas.draw_circle(center, r * 0.23, color)
 			for arm in 3:

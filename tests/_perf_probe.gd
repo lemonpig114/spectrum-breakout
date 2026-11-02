@@ -30,10 +30,17 @@ var _target_enemies := TARGET_ENEMIES
 var _target_projectiles := 0
 var _weapon_forms: Array[StringName] = []
 var _spawn_timer := 0.0
+var _element_cycle := 0.0
 var _remaining := DURATION
 var _warmup := WARMUP
 var _rng := RandomNumberGenerator.new()
 
+var _memory_start := 0.0
+var _memory_peak := 0.0
+var _absorbed_peak := 0
+var _queue_peak := 0
+var _element_queue_peak := 0
+var _element_fields_peak := 0
 var _frames := 0
 var _fps_sum := 0.0
 var _min_fps := 1.0e9
@@ -100,12 +107,14 @@ func _ready() -> void:
 	EnemyFlock.enabled = not _no_flock
 	_main = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	add_child(_main)
+	Director.stop()
+	_main.player.controls_enabled = false
 
 	await get_tree().create_timer(2.8).timeout
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 
 	Director.stop()
-	RunState.level = 1000000
+	RunState.level = 100
 	RunState.xp = 0
 	_main.player.set("_invuln", 9999.0)
 	for id in _weapon_forms:
@@ -117,6 +126,20 @@ func _ready() -> void:
 				continue
 			Skills.unlock(node.id, true)
 
+	if OS.get_cmdline_user_args().has("--element-stress"):
+		for id in [&"element_1", &"element_2", &"element_3", &"element_4"]: Skills.unlock(id,true)
+	RunState.rng.seed = 20261022
+	seed(20261022)
+	Skills.clear_relic_offers()
+	_main.weapon_choice_panel.hide()
+	_main._weapon_rewards.clear()
+	_main._level_ups_pending = 0
+	for ui_name in ["RelicChoicePanel", "LevelUpPanel", "WeaponChoicePanel"]:
+		var ui := _main.get_node_or_null("HUD/"+ui_name)
+		if ui != null: ui.hide()
+	for reason in RunState._pause_reasons.keys(): RunState.release_pause(reason)
+	_main.player.controls_enabled = not _no_fire
+	_memory_start = Performance.get_monitor(Performance.MEMORY_STATIC)
 	_fill_enemies(_target_enemies)
 	_fill_projectiles(_target_projectiles)
 	if OS.get_cmdline_user_args().has("--blackhole-skill"):
@@ -158,8 +181,20 @@ func _process(delta: float) -> void:
 		return
 
 	_main.player.set("_invuln", 9999.0)
+	if OS.get_cmdline_user_args().has("--element-stress"):
+		_element_cycle += delta
+		if _element_cycle >= 0.2:
+			_element_cycle = 0
+			RunState.restore_energy_full()
+			RunState.cycle_color(1)
+	_element_queue_peak = maxi(_element_queue_peak, Skills.element_combat.events.size())
+	_element_fields_peak = maxi(_element_fields_peak, Skills.element_combat.fields.size())
+	_memory_peak = maxf(_memory_peak, Performance.get_monitor(Performance.MEMORY_STATIC))
+	_absorbed_peak = maxi(_absorbed_peak, _main.get_node("World/BlackHoleField").orbits.size())
+	_queue_peak = maxi(_queue_peak, _main.projectile_manager.combat._events.size()-_main.projectile_manager.combat._head)
 	_remaining -= delta
 
+	_fill_projectiles(_target_projectiles - _main.projectile_manager._active.size())
 	if _warmup > 0.0:
 		# 跳过开场与首次生成 70 个敌人的分配/着色器尖峰。
 		_warmup -= delta
@@ -260,7 +295,10 @@ func _finish() -> void:
 	print("RENDER TIME gpu_ms=%.2f cpu_ms=%.2f" % [_gpu_ms / maxf(1.0, _frames), _render_cpu_ms / maxf(1.0, _frames)])
 	_frame_times.sort()
 	if not _frame_times.is_empty():
-		print("FRAME PERCENTILES p95_ms=%.2f p99_ms=%.2f" % [_frame_times[int((_frame_times.size() - 1) * 0.95)], _frame_times[int((_frame_times.size() - 1) * 0.99)]])
+		print("FRAME PERCENTILES p50_ms=%.2f p95_ms=%.2f p99_ms=%.2f" % [_frame_times[int((_frame_times.size() - 1) * 0.50)], _frame_times[int((_frame_times.size() - 1) * 0.95)], _frame_times[int((_frame_times.size() - 1) * 0.99)]])
+	print("LOAD BOUNDS memory_start_mb=%.1f memory_end_mb=%.1f memory_peak_mb=%.1f absorb_peak=%d queue_peak=%d" % [_memory_start/1048576.0, Performance.get_monitor(Performance.MEMORY_STATIC)/1048576.0, _memory_peak/1048576.0, _absorbed_peak, _queue_peak])
+	print("ELEMENT BOUNDS queue_peak=%d fields_peak=%d" % [_element_queue_peak,_element_fields_peak])
+	CombatProfiler.report(maxi(1,_frames))
 	get_tree().quit(0 if ok else 1)
 
 

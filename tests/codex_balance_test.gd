@@ -12,10 +12,10 @@ func _ready() -> void:
 	await get_tree().process_frame
 	var panel: Control = screen._codex_panel
 	check(panel.visible, "codex opens")
-	check(panel.entries.size() == 145, "80 skills + 55 relics + 7 enemies + 3 guides")
+	check(panel.entries.size() == 153, "84 skills + 59 relics + 7 enemies + 3 guides")
 	for i in 4:
 		panel.set_category(i)
-		check(panel.filtered.size() == [80, 55, 7, 3][i], "category count")
+		check(panel.filtered.size() == [84, 59, 7, 3][i], "category count")
 		for j in panel.filtered.size():
 			panel.show_entry(j)
 			check(not panel.detail.text.is_empty(), "detail content")
@@ -31,8 +31,8 @@ func _ready() -> void:
 	check(not panel.visible and not screen._started, "close without starting")
 	screen.queue_free()
 	check(Director.enemy_limit(0) == 40 and Director.enemy_limit(120) == 100 and Director.enemy_limit(300) == 80, "bounded population")
-	check(is_equal_approx(Director.health_multiplier(59), 1.0) and is_equal_approx(Director.health_multiplier(60), 1.5), "first-minute hp")
-	check(is_equal_approx(Director.health_multiplier(120), 2.0), "third phase hp")
+	check(is_equal_approx(Director.health_multiplier(59), 1.0) and is_equal_approx(Director.health_multiplier(60), 1.2), "first-minute hp")
+	check(is_equal_approx(Director.health_multiplier(120), 1.7), "third phase hp")
 	check(is_equal_approx(Director.health_multiplier(240), 3.5), "plane phase hp")
 	check(is_equal_approx(Director.health_multiplier(600), 35.0), "endless base hp")
 	check(Director.enemy_damage_multiplier(239.9) == 1.0, "half-heart contact before 240")

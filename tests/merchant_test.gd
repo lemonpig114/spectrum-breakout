@@ -210,8 +210,7 @@ func _test_purchase() -> void:
 	panel.call("_buy", buy_index)
 
 	failures += _check(
-		RunState.gold == before_gold - price
-			- (300 if relic.id == &"rare_bond" else (1000 if relic.id == &"rare_high_bond" else 0)),
+		RunState.gold == before_gold - price,
 		"buying a relic spends its price"
 	)
 	failures += _check(panel.get("_offer_prices") == frozen_prices and Skills.shop_purchases == 1,

@@ -46,15 +46,16 @@ func _ready() -> void:
 	_test_forced_super_crit()
 	_test_combat_helpers()
 	await _test_projectile_pipeline()
+	_test_fallback_skill()
 
 	print("SKILL TEST %s (%d failures)" % ["PASS" if failures == 0 else "FAIL", failures])
 	get_tree().quit(0 if failures == 0 else 1)
 
 
 func _test_catalog_rules() -> void:
-	failures += _check(Skills.nodes.size() == 80, "80 skill nodes")
-	failures += _check(Skills.relics.size() == 55, "55 relics")
-	failures += _check(Skills.get_available_nodes().size() == 20, "all twenty tier-1 nodes start available")
+	failures += _check(Skills.nodes.size() == 84, "80 skill nodes")
+	failures += _check(Skills.relics.size() == 59, "59 relics")
+	failures += _check(Skills.get_available_nodes().size() == 21, "all twenty-one tier-1 nodes start available")
 
 	failures += _check(Skills.is_available(Skills.get_node_by_id(&"fire_1")), "tier 1 available")
 	failures += _check(not Skills.is_available(Skills.get_node_by_id(&"fire_2")), "tier 2 gated by tier 1")
@@ -75,9 +76,9 @@ func _test_fire_line() -> void:
 	var rate_before := player.weapon.get_final_fire_rate()
 	failures += _check(rate_before > 3.0, "fire line raises fire rate")
 	_unlock(&"fire_4")
-	failures += _check(is_equal_approx(Skills.fire_rate_cap_multiplier(), 9.0), "fire cap triples")
+	failures += _check(is_equal_approx(Skills.fire_rate_cap_multiplier(), 6.0), "fire cap doubles")
 	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"damage_mult"), 1.0), "overdrive no longer reduces damage")
-	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"fire_rate_final"), 1.05 * 1.20), "fire final rate modifiers multiply")
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"fire_rate_final"), 1.05 * 1.30), "fire final rate modifiers multiply")
 	failures += _check(player.weapon.stats.get_value(&"ricochet") == 1.0, "tier four grants one ricochet")
 
 
@@ -182,36 +183,13 @@ func _test_energy_line() -> void:
 	failures += _check(Skills.energy_max_bonus() == 5, "energy line grants +5 cap")
 	failures += _check(is_equal_approx(RunState.max_energy, 8.0), "energy cap reaches 8")
 	RunState.energy = 3.0
-	failures += _check(is_equal_approx(Skills.energy_regen_multiplier(), 1.90),
+	failures += _check(is_equal_approx(Skills.energy_regen_multiplier(), 2.60),
 		"low-energy regeneration stacks additively")
 
-	var rng_state := RunState.rng.state
-	var miss_seed := -1
-	var hit_seed := -1
-	for candidate in 1000:
-		var probe := RandomNumberGenerator.new()
-		probe.seed = candidate
-		var first := probe.randf()
-		var second := probe.randf()
-		if first >= 0.20 and second < 0.20 and miss_seed < 0:
-			miss_seed = candidate
-		if first < 0.20 and second >= 0.20 and hit_seed < 0:
-			hit_seed = candidate
-		if miss_seed >= 0 and hit_seed >= 0:
-			break
-	failures += _check(miss_seed >= 0 and hit_seed >= 0, "found deterministic tier-4 roll seeds")
-	if miss_seed >= 0 and hit_seed >= 0:
-		RunState.energy = RunState.max_energy
-		RunState.rng.seed = miss_seed
-		RunState.spend_energy(2.0)
-		failures += _check(is_equal_approx(RunState.energy, RunState.max_energy - 2.0),
-			"two-point spend rolls refill once, not twice")
-		RunState.energy = RunState.max_energy
-		RunState.rng.seed = hit_seed
-		RunState.spend_energy(2.0)
-		failures += _check(is_equal_approx(RunState.energy, RunState.max_energy),
-			"successful tier-4 roll refills energy immediately")
-	RunState.rng.state = rng_state
+	RunState.energy = RunState.max_energy
+	RunState.spend_energy(2.0)
+	failures += _check(is_equal_approx(RunState.energy,RunState.max_energy-2.0),"energy four no longer randomly refills")
+
 
 
 func _test_speed_line() -> void:
@@ -264,24 +242,7 @@ func _test_shotgun_line() -> void:
 	_test_dual_shot_geometry()
 
 	_unlock(&"shotgun_2")
-	var manager: ProjectileManager = main.projectile_manager
-	var corpse := _spawn_enemy(player.global_position + Vector2(80.0, 0.0), 999.0)
-	var before := manager._active.size()
-	EventBus.enemy_killed.emit(corpse, 0, 0)
-	failures += _check(
-		manager._active.size() >= before + 3,
-		"shotgun tier 2 bursts three fragments on kill"
-	)
-	var shard := manager._active[before] as Projectile
-	var base_speed := player.weapon.stats.get_value(&"projectile_speed")
-	var base_lifetime := player.weapon.stats.get_value(&"projectile_lifetime")
-	failures += _check(shard != null and shard.speed <= base_speed * 0.55,
-		"fragments travel much slower than normal shots")
-	failures += _check(shard != null and shard.lifetime <= base_lifetime * 0.50,
-		"fragments have a much shorter range")
-	failures += _check(shard != null and shard.pierce == 0, "fragments do not inherit pierce")
-	failures += _check(shard != null and not shard.allow_crit, "fragments do not inherit crit")
-	corpse.queue_free()
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"range_mult"),0.8),"shotgun one reduces range")
 
 	_unlock(&"shotgun_3")
 	failures += _check(
@@ -507,68 +468,21 @@ func _test_weakness_line() -> void:
 	failures += _check(Skills.weakness_multiplier() > weakness_before, "weakness multiplier rises")
 	failures += _check(is_equal_approx(Skills.weakness_multiplier(), 2.0), "weakness multiplier is 200%")
 	_unlock(&"weak_2")
-	failures += _check(is_equal_approx(Skills.elemental_multiplier(), 1.3), "elemental damage reaches +30%")
+	failures += _check(is_equal_approx(Skills.elemental_multiplier(), 1.0), "weak tier two no longer adds elemental damage")
 	_unlock(&"weak_3")
 	_unlock(&"weak_4")
 
 
 func _test_elemental_pipeline() -> void:
-	# Earlier contract/luck cases randomly grant relics. Their independent
-	# on-hit soul/arrow procs must not contaminate this ice-only damage check.
-	var saved_relics := Skills.owned_relics.duplicate()
-	for relic in saved_relics:
-		if relic.id in [&"demon_soul_blade", &"rare_poison_arrow", &"rare_frost_arrow", &"rare_burning_arrow"]:
-			Skills.owned_relics.erase(relic)
-	var text_layer := FX._text_layer as FloatingTextLayer
-	var base_health := 5000.0
-	var elemental := Skills.elemental_multiplier()
-	var red := _spawn_enemy(player.global_position + Vector2(90.0, 0.0), base_health)
-	red.color_index = _weak_target_color(ColorType.RED)
-	var red_base := _elemental_test_hit(red, ColorType.RED)
-	failures += _check(red._healthbar.burn, "red weak hit attaches burn icon")
-	var red_before := red.health
-	FX._elemental_label_frame = -1
-	red._apply_dot_tick()
-	failures += _check(_last_damage_style(text_layer) == FloatingTextLayer.STYLE_BURN, "burn tick emits orange burn damage text")
-	for i in 3:
-		red._apply_dot_tick()
-	failures += _check(is_equal_approx(red_before - red.health, red_base * 2.0 * elemental * Skills.weakness_multiplier()), "red attachment includes weakness damage without crit")
-	failures += _check(red._healthbar._burn_pulse > 0.0 and not red._healthbar.burn, "burn icon jumps on its final damage tick")
-	red.queue_free()
-
-	var green := _spawn_enemy(player.global_position + Vector2(90.0, 0.0), base_health)
-	green.color_index = _weak_target_color(ColorType.GREEN)
-	var green_base := _elemental_test_hit(green, ColorType.GREEN)
-	failures += _check(green._healthbar.poison, "green weak hit attaches poison icon")
-	var green_before := green.health
-	FX._elemental_label_frame = -1
-	green._apply_dot_tick()
-	green._apply_dot_tick()
-	failures += _check(is_equal_approx(green_before - green.health, green_base * 0.45 * elemental * Skills.weakness_multiplier()), "poison includes weakness damage without crit")
-	failures += _check(green._healthbar._poison_pulse > 0.0 and _last_damage_style(text_layer) == FloatingTextLayer.STYLE_POISON, "poison tick jumps and emits green damage text")
-	green.queue_free()
-
-	var blue := _spawn_enemy(player.global_position + Vector2(90.0, 0.0), base_health)
-	blue.color_index = _weak_target_color(ColorType.BLUE)
-	_elemental_test_hit(blue, ColorType.BLUE)
-	failures += _check(blue._healthbar.ice and is_equal_approx(blue._slow, 0.25 * elemental), "blue weak hit attaches ice and slows")
-	var second_base := Skills.impact_base_damage(ColorType.BLUE)
-	var preview := Skills.build_hit_context(player, blue, second_base, ColorType.BLUE, false, false)
-	var blue_before := blue.health
-	FX._elemental_label_frame = -1
-	_elemental_test_hit(blue, ColorType.BLUE)
-	failures += _check(preview.elemental_bonus > 0.0 and is_equal_approx(blue_before - blue.health, preview.amount), "ice bonus is included exactly once in health loss")
-	failures += _check(blue._healthbar._ice_pulse > 0.0 and _last_damage_style(text_layer) == FloatingTextLayer.STYLE_ICE, "ice icon jumps and emits blue bonus text")
-	blue.queue_free()
-	Skills.owned_relics.assign(saved_relics)
-	failures += _check(float(Skills.damage_totals.get(&"base", 0.0)) > 0.0, "direct projectile health loss is recorded")
-	failures += _check(float(Skills.damage_totals.get(&"skill:weak_3_burn", 0.0)) > 0.0
-		and float(Skills.damage_totals.get(&"skill:weak_3_poison", 0.0)) > 0.0
-		and float(Skills.damage_totals.get(&"skill:weak_3_ice", 0.0)) > 0.0,
-		"all three elemental damage sources are recorded")
-	Skills.flush_damage_estimates()
-	failures += _check(float(Skills.damage_bonus_estimates.get(&"skill:heavy_1", 0.0)) > 0.0,
-		"heavy damage modifier has an estimated contribution")
+	_unlock(&"element_1")
+	var e := _spawn_enemy(player.global_position+Vector2(100,0),100000.0)
+	var context := Skills.build_hit_context(player,e,100,ColorType.RED,false,false)
+	e.take_damage(context)
+	failures += _check(e.element_layers.has(ColorType.RED),"new elemental branch applies attachment without weakness")
+	var pool := float(e.element_layers.get(ColorType.RED,0.0))
+	Skills.element_combat.tick(e)
+	failures += _check(is_equal_approx(float(e.element_layers.get(ColorType.RED,0.0)),pool*0.5),"element pools halve after a full-strength tick")
+	e.queue_free()
 
 
 func _weak_target_color(attack_color: int) -> int:
@@ -760,3 +674,31 @@ func _check(condition: bool, label: String) -> int:
 		return 0
 	print("SKILL FAIL: %s" % label)
 	return 1
+
+
+## 技能池耗尽后：三选一用可重复的「潜能释放」填满；每次叠加固定数值。
+func _test_fallback_skill() -> void:
+	var excluded: Array[StringName] = []
+	for node in Skills.get_available_nodes():
+		excluded.append(node.id)
+	var options := Skills.pick_options(3, excluded)
+	failures += _check(options.size() == 3, "exhausted pool still fills three cards")
+	var all_repeat := true
+	for node in options:
+		if not node.has_flag(&"repeatable"):
+			all_repeat = false
+	failures += _check(all_repeat, "exhausted pool fills with the repeatable potential skill")
+
+	var damage_before := player.weapon.stats.get_value(&"damage")
+	var mult_before := player.weapon.stats.get_value(&"damage_mult")
+	var crit_before := Skills.get_crit_damage(null)
+	failures += _check(Skills.unlock(&"repeat_potential", true), "potential can be taken")
+	failures += _check(Skills.unlock(&"repeat_potential", true), "potential can be taken again")
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"damage"), damage_before + 20.0),
+		"each potential grants +10 base damage")
+	failures += _check(is_equal_approx(player.weapon.stats.get_value(&"damage_mult"), mult_before + 0.20),
+		"each potential grants +10% attack multiplier")
+	failures += _check(is_equal_approx(Skills.get_crit_damage(null), crit_before + 0.20),
+		"each potential grants +10% crit damage")
+	failures += _check(not Skills.is_unlocked(&"repeat_potential"),
+		"potential never enters the unlocked node table")

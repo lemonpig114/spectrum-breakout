@@ -389,7 +389,8 @@ func _emit_switch_preview() -> void:
 
 func _find_nearest_enemy() -> Node2D:
 	var best: Node2D = null
-	var best_distance := AUTO_AIM_RANGE * AUTO_AIM_RANGE
+	var aim_range := minf(AUTO_AIM_RANGE, weapon.attack_range(weapon.primary_form, _heavy_primed))
+	var best_distance := aim_range * aim_range
 	var camera := get_viewport().get_camera_2d()
 	if camera == null:
 		return null
@@ -460,6 +461,15 @@ func _shot_jitter(jitter_half: float) -> float:
 	return RunState.rng.randf_range(-jitter_half, jitter_half)
 
 
+func effective_fire_rate() -> float:
+	var rate := weapon.get_final_fire_rate()
+	var primary := weapon.primary_data()
+	if primary != null: rate *= primary.fire_rate_scale
+	if weapon.core != null:
+		rate = minf(rate,weapon.core.fire_rate*_fire_rate_scale*Skills.fire_rate_cap_multiplier())
+	return maxf(0.1,rate)
+
+
 func _fire(shoot_direction: Vector2) -> void:
 	if projectile_manager == null:
 		return
@@ -481,15 +491,9 @@ func _fire(shoot_direction: Vector2) -> void:
 	var spread := deg_to_rad(weapon_stats.get_value(&"spread_degrees"))
 	var base_angle := base_direction.angle()
 
-	var rate := weapon.get_final_fire_rate()
+	var rate := effective_fire_rate()
 	var primary_data := weapon.primary_data()
-	if primary_data != null:
-		rate *= primary_data.fire_rate_scale
-	var cap := rate
-	if weapon.core != null:
-		# 上限也按机体倍率缩放，否则游隼的基础射速会吃掉技能给的成长空间。
-		cap = weapon.core.fire_rate * _fire_rate_scale * Skills.fire_rate_cap_multiplier()
-		rate = minf(rate, cap)
+	var cap := weapon.core.fire_rate*_fire_rate_scale*Skills.fire_rate_cap_multiplier() if weapon.core != null else rate
 
 	var heavy := false
 	var cooldown := 1.0 / maxf(0.1, rate)
@@ -503,7 +507,7 @@ func _fire(shoot_direction: Vector2) -> void:
 			_fire_cooldown = cooldown * 2.0
 			return
 	var sound_form := weapon.primary_form if weapon.primary_form != &"" else &"basic"
-	if weapon.has_form(&"sword") and weapon.has_form(&"scythe"):
+	if weapon.primary_form in [&"sword", &"scythe"] and weapon.has_form(&"sword") and weapon.has_form(&"scythe"):
 		sound_form = &"scythe"
 	Audio.play((&"shoot_heavy" if heavy else &"shoot") if sound_form == &"basic" else StringName("weapon_%s" % String(sound_form)))
 

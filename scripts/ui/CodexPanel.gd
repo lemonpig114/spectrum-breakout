@@ -148,7 +148,7 @@ func build_entries() -> void:
 	add_entry(3, "成长与拾取", "升级 / 宝箱 / 商人", "前四次升级需要 6 / 12 / 20 / 30 经验。\n金币与经验靠近后吸收；商人到达时会收集地面资源。\n遗物出现后可拾取或丢弃，5 秒未选择自动拾取。暂停时停止读条。", Color(0.5, 0.85, 1))
 	var pause_hint := "点右上角暂停查看本局技能与遗物。" if GameInput.touch_controls_active else \
 		"按 Esc 查看本局技能与遗物。"
-	add_entry(3, "技能路线", "20 条路线 · 80 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n%s" % pause_hint, Color(0.5, 0.85, 1))
+	add_entry(3, "技能路线", "21 条路线 · 84 项技能", "一阶开启路线；二阶和三阶都只需一阶。四阶需要同时拥有二阶、三阶。\n恰好两发子弹会平行射出；三发以上形成扇形。\n%s" % pause_hint, Color(0.5, 0.85, 1))
 
 func add_entry(group: int, title: String, subtitle: String, body: String, accent: Color) -> void:
 	entries.append({"category": group, "title": title, "subtitle": subtitle, "body": body, "accent": Color(clampf(accent.r, 0, 1), clampf(accent.g, 0, 1), clampf(accent.b, 0, 1)).lerp(Color.WHITE, 0.30)})

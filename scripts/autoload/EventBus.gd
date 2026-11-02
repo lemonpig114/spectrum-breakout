@@ -4,6 +4,7 @@ extends Node
 
 signal color_changed(color_index: int)
 signal dot_tick(bucket: int)
+signal element_tick(bucket: int)
 signal color_switch_preview(
 	active: bool,
 	screen_position: Vector2,

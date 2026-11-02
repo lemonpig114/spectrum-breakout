@@ -50,7 +50,7 @@ func _ready() -> void:
 		"selector", "levelup", "panic", "fx", "supercrit", "switch", "blue", "soul_palette", "xpbar",
 		"styles", "hearts", "pickups", "merchant", "merchant_arrow", "shop",
 		"shop_full", "pause", "pause_build", "pause_relics", "pause_damage", "pause_settings",
-		"pause_quit", "shotgun", "clone", "weapon", "console", "sword", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall",
+		"pause_quit", "shotgun", "clone", "weapon", "console", "sword", "boss", "boss_hammer", "boss_impact", "round_blast", "round_motion", "wall", "bosschest",
 	]:
 		if args.has(candidate):
 			mode = candidate
@@ -225,6 +225,17 @@ func _ready() -> void:
 		main.player.global_position = Vector2(RunState.arena_rect.end.x - 85.0, 0.0)
 		main.camera.global_position = main.player.global_position
 		await get_tree().create_timer(0.35).timeout
+	elif mode == "bosschest":
+		Director.stop()
+		main.player.controls_enabled = false
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			enemy.queue_free()
+		await get_tree().process_frame
+		var chest_pos: Vector2 = main.player.global_position + Vector2(150.0, 0.0)
+		main._spawn_boss_chest(chest_pos)
+		if args.has("--open"):
+			main.player.global_position = chest_pos
+		await get_tree().create_timer(1.15).timeout
 	else:
 		await get_tree().create_timer(1.0).timeout
 	var heart_count_index := args.find("--heart-count")
@@ -305,6 +316,8 @@ func _ready() -> void:
 		path = "res://tests/screenshot_round_motion.png"
 	elif mode == "wall":
 		path = "res://tests/screenshot_wall.png"
+	elif mode == "bosschest":
+		path = "res://tests/visual_bosschest.png"
 
 	var shot_index := args.find("--shot")
 	if shot_index >= 0 and shot_index + 1 < args.size():

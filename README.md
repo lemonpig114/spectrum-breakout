@@ -2,12 +2,12 @@
 
 Godot 4.4.1 制作的霓虹几何幸存者游戏，目前处于开发测试阶段。
 
-## 下载 v0.2.0 测试版
+## 下载 v0.3.0-test.2 测试版
 
-[打开 GitHub 下载页面](https://github.com/lemonpig114/spectrum-breakout/releases/tag/v0.2.0)
+[打开 GitHub 下载页面](https://github.com/lemonpig114/spectrum-breakout/releases/tag/v0.3.0-test.2)
 
-- Windows 64位：下载 `spectrum-breakout-v0.2.0-windows-x64.zip`，完整解压，打开 `光谱突围.exe`。同名 `.pck` 必须保留在程序旁边。
-- Android ARM64：下载 `spectrum-breakout-v0.2.0-android-arm64.apk` 并安装。此包使用现有调试签名，供实机测试；不是应用商店发行包。
+- Windows 64位：下载 `spectrum-breakout-v0.3.0-test.2-windows-x64.zip`，完整解压，打开 `光谱突围.exe`。同名 `.pck` 必须保留在程序旁边。
+- Android ARM64：下载 `spectrum-breakout-v0.3.0-test.2-android-arm64.apk` 并安装。此包使用现有调试签名，供实机测试；不是应用商店发行包。
 - Windows使用Forward+，Android使用Mobile/Vulkan，需支持相应图形接口。安卓真实设备兼容性与流畅度仍需实机验收。
 
 ## 操作

@@ -1,18 +1,20 @@
 class_name BlackHoleField
 extends Node2D
 
-## 原弹/范围攻击沿漩涡移动；两秒计入伤害，三秒回收，黑洞同步成长。
+## 捕获攻击仅快速缩小后回收，不再移动或补做碰撞；销毁时计入35%伤害。
 const INTERVAL := 20.0
 const FIRST_CAST_DELAY := 5.0
 const DURATION := 10.0
-const ORBIT_DURATION := 3.0
+const ORBIT_DURATION := 0.2
+const ABSORB_RATIO := 0.35
+const TICK_INTERVAL := 0.5
+var suppress_absorb_animation := false
+var _fps_sample := 0.0
 const BASE_RADIUS := 40.0
 const OUTER_RANGE_SCALE := 1.5
 const MAX_ORBITS := 128
 const CAPTURES_PER_SCAN := 8
-const OVERLOAD_THRESHOLD := 50
 const DIRECT_ABSORB_THRESHOLD := 80
-const HIT_CHECK_FRAMES := 3
 
 var player: Player
 var manager: ProjectileManager
@@ -33,14 +35,11 @@ var _visual_time := 0.0
 var _redraw_dirty := false
 var _points := PackedVector2Array()
 var _growth_tween: Tween
-var _enemy_cells := {}
-const HIT_CELL_SIZE := 72.0
 var _disk: Polygon2D
 var _disk_material: ShaderMaterial
 var _collapse_disk: Polygon2D
 var _collapse_material: ShaderMaterial
 var _absorb_flash := 0.0
-var _orbit_hit_frame := HIT_CHECK_FRAMES - 1
 var _growth_dirty := false
 
 
@@ -92,7 +91,6 @@ func cast(at: Vector2) -> void:
 	radius = BASE_RADIUS
 	target_radius = BASE_RADIUS
 	_growth_dirty = false
-	_orbit_hit_frame = HIT_CHECK_FRAMES - 1
 	absorbed = 0
 	_clear_orbits()
 	_tick = 0.0
@@ -130,35 +128,32 @@ func _simulate_hole(delta: float) -> void:
 			_request_redraw()
 		return
 	age += delta
-	_orbit_hit_frame = (_orbit_hit_frame + 1) % HIT_CHECK_FRAMES
-	var check_orbit_hits := _orbit_hit_frame == 0
-	if check_orbit_hits:
-		_rebuild_hit_cells()
-	var orbit_delta := delta * (2.0 if orbits.size() > OVERLOAD_THRESHOLD else 1.0)
+	_fps_sample += delta
+	if _fps_sample >= 0.5:
+		_fps_sample = 0.0
+		var fps := Engine.get_frames_per_second()
+		if fps > 0 and fps < 10:
+			suppress_absorb_animation = true
+		elif fps >= 15:
+			suppress_absorb_animation = false
 	for i in range(orbits.size() - 1, -1, -1):
-		var before_growth := minf(1.0, float(orbits[i].age) / ORBIT_DURATION)
-		orbits[i].age = float(orbits[i].age) + orbit_delta
-		if _orbit_valid(orbits[i]):
-			var growth := minf(1.0, float(orbits[i].age) / ORBIT_DURATION) - before_growth
-			target_radius = minf(size_limit(), target_radius + BASE_RADIUS * 0.12 * growth)
-			_growth_dirty = _growth_dirty or growth > 0.0
-		_advance_orbit(orbits[i], check_orbit_hits)
-		if float(orbits[i].age) >= 2.0 and not bool(orbits[i].get("credited", false)) and _orbit_valid(orbits[i]):
-			damage += float(orbits[i].damage) * 0.5
-			orbits[i].credited = true
-		if float(orbits[i].age) >= ORBIT_DURATION:
-			_ingest_orbit(orbits[i])
+		var entry: Dictionary = orbits[i]
+		entry.age = float(entry.age) + delta
+		if suppress_absorb_animation or float(entry.age) >= ORBIT_DURATION or not _orbit_valid(entry):
+			_ingest_orbit(entry)
 			orbits.remove_at(i)
+		else:
+			_advance_orbit(entry)
 	_scan += delta
 	if _scan >= 0.1:
 		_scan = fmod(_scan, 0.1)
-		# 剩余时间不足三秒时停止捕获，保证每枚都能完成完整漩涡动画。
+		# 仅预留短缩小时间；收尾会结算尚未完成的捕获。
 		if age <= DURATION - ORBIT_DURATION:
 			_capture_nearby()
 		_apply_slow()
 	_tick += delta
-	while _tick >= 1.0:
-		_tick -= 1.0
+	while _tick >= TICK_INTERVAL:
+		_tick -= TICK_INTERVAL
 		_hit_area(effect_radius(), damage * (0.15 if Skills.is_unlocked(&"blackhole_3") else 0.05), true)
 	if age >= DURATION:
 		finish()
@@ -224,7 +219,7 @@ func capture_weapon_attack(attack: Dictionary, at: Vector2) -> bool:
 
 
 func _absorb_overflow() -> void:
-	if orbits.size() > DIRECT_ABSORB_THRESHOLD:
+	if suppress_absorb_animation or orbits.size() > DIRECT_ABSORB_THRESHOLD:
 		var orbit: Dictionary = orbits.pop_back()
 		_ingest_orbit(orbit)
 
@@ -232,9 +227,9 @@ func _absorb_overflow() -> void:
 func _ingest_orbit(orbit: Dictionary) -> void:
 	if _orbit_valid(orbit):
 		if not bool(orbit.get("credited", false)):
-			damage += float(orbit.damage) * 0.5
+			damage += float(orbit.damage) * ABSORB_RATIO
 			orbit.credited = true
-		var remaining_growth := 1.0 - clampf(float(orbit.age) / ORBIT_DURATION, 0.0, 1.0)
+		var remaining_growth := 1.0
 		target_radius = minf(size_limit(), target_radius + BASE_RADIUS * 0.12 * remaining_growth)
 		_growth_dirty = true
 		absorbed += 1
@@ -242,9 +237,7 @@ func _ingest_orbit(orbit: Dictionary) -> void:
 
 
 func orbit_scale(seconds: float) -> float:
-	if seconds <= 2.0:
-		return lerpf(1.0, 0.88, clampf(seconds / 2.0, 0.0, 1.0))
-	return 0.88 * pow(1.0 - clampf(seconds - 2.0, 0.0, 1.0), 2.0)
+	return pow(1.0 - clampf(seconds / ORBIT_DURATION, 0.0, 1.0), 2.0)
 
 
 func _orbit_valid(orbit: Dictionary) -> bool:
@@ -279,92 +272,18 @@ func _clear_orbits() -> void:
 	orbits.clear()
 
 
-func _rebuild_hit_cells() -> void:
-	_enemy_cells.clear()
-	if orbits.is_empty():
+func _advance_orbit(entry: Dictionary, _check_hits: bool = false) -> void:
+	# Legacy method name retained for capture callers; no orbit, rotation or collision work.
+	var shrink := orbit_scale(float(entry.age))
+	if entry.has("attack"):
+		entry.attack.visual_scale = shrink
 		return
-	for node in get_tree().get_nodes_in_group(&"enemies"):
-		var enemy := node as Enemy
-		if enemy == null or enemy.is_dead:
-			continue
-		var reach := Vector2.ONE * enemy.radius
-		var low := Vector2i(floori((enemy.global_position.x - reach.x) / HIT_CELL_SIZE), floori((enemy.global_position.y - reach.y) / HIT_CELL_SIZE))
-		var high := Vector2i(floori((enemy.global_position.x + reach.x) / HIT_CELL_SIZE), floori((enemy.global_position.y + reach.y) / HIT_CELL_SIZE))
-		for y in range(low.y, high.y + 1):
-			for x in range(low.x, high.x + 1):
-				var key := Vector2i(x, y)
-				if not _enemy_cells.has(key):
-					_enemy_cells[key] = []
-				_enemy_cells[key].append(enemy)
-
-
-func _advance_orbit(orbit: Dictionary, check_hits: bool = true) -> void:
-	var t := clampf(float(orbit.age) / ORBIT_DURATION, 0.0, 1.0)
-	var turns := 8.0 if Skills.is_unlocked(&"blackhole_3") else 4.5
-	var point := global_position + Vector2.from_angle(float(orbit.angle) + float(orbit.age) * turns) * float(orbit.radius) * (1.0 - t)
-	var previous_visual: Vector2 = orbit.last_position
-	var previous: Vector2 = orbit.last_hit_position
-	orbit.last_position = point
-	if check_hits:
-		orbit.last_hit_position = point
-	var shrink := orbit_scale(float(orbit.age))
-	if orbit.has("attack"):
-		var attack: Dictionary = orbit.attack
-		attack.position = point
-		attack.angle = (point - previous_visual).angle()
-		attack.visual_scale = shrink
-		if not check_hits or int(attack.remaining) <= 0:
-			return
-		var ids := {}
-		var reach := float(orbit.size) * shrink
-		var low := Vector2i(floori((minf(point.x, previous.x) - reach) / HIT_CELL_SIZE), floori((minf(point.y, previous.y) - reach) / HIT_CELL_SIZE))
-		var high := Vector2i(floori((maxf(point.x, previous.x) + reach) / HIT_CELL_SIZE), floori((maxf(point.y, previous.y) + reach) / HIT_CELL_SIZE))
-		for y in range(low.y, high.y + 1):
-			for x in range(low.x, high.x + 1):
-				for enemy in _enemy_cells.get(Vector2i(x, y), []):
-					if enemy.is_dead or ids.has(enemy.get_instance_id()):
-						continue
-					ids[enemy.get_instance_id()] = true
-					if Geometry2D.get_closest_point_to_segment(enemy.global_position, previous, point).distance_squared_to(enemy.global_position) <= (enemy.radius + reach) ** 2:
-						manager.combat.hit_absorbed_attack(attack, enemy, (point - previous).normalized())
-						if int(attack.remaining) <= 0:
-							return
+	if entry.body == null or not _orbit_valid(entry):
 		return
-	if orbit.body == null or not _orbit_valid(orbit):
-		return
-	var body: Node2D = orbit.body.get_ref()
-	body.global_position = point
+	var body: Node2D = entry.body.get_ref()
 	body.scale = Vector2.ONE * maxf(0.001, shrink)
-	var tangent := point - previous_visual
-	if tangent.length_squared() > 0.000001:
-		body.rotation = tangent.angle()
-		body.direction = tangent.normalized()
-	var hit_radius := maxf(0.3, float(orbit.size) * shrink)
-	if body is Projectile:
-		if body._has_sprite_trail and body._sprite_trail != null:
-			body._sprite_trail.add_point(point)
-			while body._sprite_trail.get_point_count() > 6:
-				body._sprite_trail.remove_point(0)
-			body._sprite_trail.width = float(orbit.get("trail_width", 3.0)) * shrink
-		if not check_hits or body.orbit_exhausted:
-			return
-		var low := Vector2i(floori((minf(point.x, previous.x) - hit_radius) / HIT_CELL_SIZE), floori((minf(point.y, previous.y) - hit_radius) / HIT_CELL_SIZE))
-		var high := Vector2i(floori((maxf(point.x, previous.x) + hit_radius) / HIT_CELL_SIZE), floori((maxf(point.y, previous.y) + hit_radius) / HIT_CELL_SIZE))
-		for y in range(low.y, high.y + 1):
-			for x in range(low.x, high.x + 1):
-				for enemy in _enemy_cells.get(Vector2i(x, y), []):
-					if not enemy.is_dead and Geometry2D.get_closest_point_to_segment(enemy.global_position, previous, point).distance_squared_to(enemy.global_position) <= (enemy.radius + hit_radius) ** 2:
-						body.direction = (point - previous).normalized()
-						body._on_body_entered(enemy)
-						if body.orbit_exhausted:
-							return
-	else:
-		var hostile := body as EnemyProjectile
-		if check_hits and hostile != null and not hostile.orbit_hit and is_instance_valid(hostile.target):
-			var hit_player := hostile.target as Player
-			if hit_player != null and Geometry2D.get_closest_point_to_segment(hit_player.global_position, previous, point).distance_squared_to(hit_player.global_position) <= (hit_player.body_radius + hit_radius) ** 2:
-				hostile.orbit_hit = true
-				hit_player.take_damage(hostile.damage, hostile)
+	if body is Projectile and body._has_sprite_trail and body._sprite_trail != null:
+		body._sprite_trail.visible = false
 
 
 func _apply_slow() -> void:
@@ -385,6 +304,7 @@ func _hit_area(reach: float, amount: float, tug: bool, explosion: bool = false) 
 		var hit := DamageContext.new()
 		hit.source = self
 		hit.target = enemy
+		hit.hit_position = global_position
 		hit.amount = amount
 		hit.color_index = -1
 		hit.add_tag(&"blackhole")
@@ -400,11 +320,13 @@ func finish() -> void:
 	if not active:
 		return
 	active = false
-	_clear_orbits()
+	for entry in orbits:
+		_ingest_orbit(entry)
+	orbits.clear()
 	if Skills.is_unlocked(&"blackhole_2"):
 		_burst_radius = effect_radius() * 2.0
 		_burst = 0.75
-		_hit_area(_burst_radius, damage * 3.0, true, true)
+		_hit_area(_burst_radius, damage * 6.0, true, true)
 		Audio.play(&"weapon_hit_black_hole")
 	_request_redraw()
 
@@ -438,24 +360,6 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, radius, _angle, _angle + TAU * 0.78, 36,
 			Color(0.94, 0.76, 1.3, 0.16 * fade), 1.0, true)
 		draw_circle(Vector2.ZERO, radius * 0.19, Color(0.005, 0.003, 0.01, fade))
-		var turns := 8.0 if Skills.is_unlocked(&"blackhole_3") else 4.5
-		var trail_count := 0
-		for orbit in orbits:
-			# Real bullets retain their original renderer, shape and color. Only
-			# visual-only preview entries need a replacement circle/trail here.
-			if orbit.body != null or orbit.has("attack"):
-				continue
-			var t := clampf(float(orbit.age) / ORBIT_DURATION, 0.0, 1.0)
-			var angle := float(orbit.angle) + float(orbit.age) * turns
-			var distance := float(orbit.radius) * (1.0 - t)
-			var point := Vector2.from_angle(angle) * distance
-			var tint: Color = orbit.tint
-			tint.a = 0.85 * (1.0 - t * t)
-			if trail_count < 24:
-				draw_arc(Vector2.ZERO, distance, angle - 0.32, angle, 5,
-					Color(tint.r, tint.g, tint.b, tint.a * 0.25), 1.2, true)
-				trail_count += 1
-			draw_circle(point, maxf(0.3, float(orbit.size) * orbit_scale(float(orbit.age))), tint)
 	if _burst > 0.0:
 		_draw_collapse()
 

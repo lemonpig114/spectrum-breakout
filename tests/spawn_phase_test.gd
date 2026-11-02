@@ -9,13 +9,13 @@ func check(value: bool, message: String) -> void:
 
 func _ready() -> void:
 	var boundaries := [0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0, 330.0, 360.0, 420.0, 480.0, 540.0]
-	var rates := [3.0, 4.0, 6.0, 13.0, 6.0, 8.0, 12.0, 6.0, 8.0, 10.0, 6.0, 10.0, 12.0]
+	var rates := [3.0, 4.0, 6.0, 10.0, 6.0, 8.0, 12.0, 5.0, 8.0, 10.0, 5.0, 10.0, 12.0]
 	for i in boundaries.size():
 		check(Director.spawn_phase(boundaries[i]) == i, "phase boundary %d" % i)
 		check(is_equal_approx(Director.spawn_rate(boundaries[i]), rates[i]), "rate boundary %d" % i)
 	check(Director.spawn_phase(29.99) == 0 and Director.spawn_phase(299.99) == 6, "phase end points")
 	check(Director.enemy_limit(119.99) == 55 and Director.enemy_limit(120) == 100 and Director.enemy_limit(180) == 70 and Director.enemy_limit(240) == 80, "phase caps")
-	check(Director._spawn_batch_size(3) == 13 and is_equal_approx(Director._spawn_interval(3), 1.0), "thirteen simultaneous surround enemies per second")
+	check(Director._spawn_batch_size(3) == 10 and is_equal_approx(Director._spawn_interval(3), 1.0), "ten simultaneous surround enemies per second")
 	check(Director.enemy_damage_multiplier(239.99) == 1.0 and Director.enemy_damage_multiplier(240) == 2.0, "damage step")
 	Director._enemy_types = ContentDB.get_enemies()
 	check(Director._phase_type(0, 0).id == &"chaser_triangle", "opening triangles")
@@ -29,26 +29,26 @@ func _ready() -> void:
 		check(Director._phase_type(6, index).id == wanted, "late four-type mix")
 	check(Director._phase_type(7, 0).id == &"chaser_hex" and Director._phase_type(7, 1).id == &"chaser_hex", "five-to-six-minute solo hex phase")
 	for index in 8:
-		check(Director._phase_type(8, index).id == (&"chaser_hex" if index < 6 else &"chaser_round"), "330-second hex/exploder 6:2 cycle")
+		check(Director._phase_type(8, index).id == (&"chaser_hex" if index < 5 else &"chaser_round"), "330-second hex/exploder 5:3 cycle")
 	for index in 10:
-		check(Director._phase_type(9, index).id == (&"chaser_hex" if index < 8 else &"ranged_plane"), "360-second hex/ranged 8:2 cycle")
+		check(Director._phase_type(9, index).id == (&"chaser_hex" if index < 6 else &"ranged_plane"), "360-second hex/ranged 6:4 cycle")
 		check(Director._phase_type(10, index).id == &"chaser_hex", "boss phase only hex")
-		check(Director._phase_type(11, index).id == (&"chaser_hex" if index < 6 else &"ranged_plane"), "480-second hex/ranged 6:4 cycle")
+		check(Director._phase_type(11, index).id == (&"chaser_hex" if index < 5 else &"ranged_plane"), "480-second hex/ranged 5:5 cycle")
 	for i in 15:
 		var seconds := 540.0 + i * 15.0
 		var wanted: StringName = [&"chaser_triangle", &"chaser_square", &"chaser_hex", &"chaser_round", &"ranged_plane"][i % 5]
 		check(Director._phase_type(Director.spawn_phase(seconds), 0).id == wanted, "endless cycles through five single-type waves")
-		check(Director.spawn_rate(seconds) == [12.0, 10.0, 8.0, 10.0, 8.0][i % 5], "endless rate per wave")
-		check(Director.health_multiplier(seconds) == 35.0 + floorf((seconds - 540.0) / 100.0), "endless hp grows every hundred seconds")
-	check(Director.health_multiplier(539.99) == 20.0 and Director.health_multiplier(540.0) == 35.0 and Director.health_multiplier(639.99) == 35.0 and Director.health_multiplier(640.0) == 36.0, "endless hp exact boundaries")
+		check(Director.spawn_rate(seconds) == [12.0, 10.0, 6.5, 10.0, 8.0][i % 5], "endless rate per wave")
+		check(is_equal_approx(Director.health_multiplier(seconds),35.0 if seconds < 660 else 35.0*pow(1.3,1+floorf((seconds-660)/60))), "endless hp grows exponentially after a two-minute grace period")
+	check(Director.health_multiplier(539.99)==20 and Director.health_multiplier(540)==35 and Director.health_multiplier(659.99)==35 and is_equal_approx(Director.health_multiplier(660),45.5) and is_equal_approx(Director.health_multiplier(720),59.15),"endless hp grace period and minute boundaries")
 	check(Director.health_multiplier(329.99) == 6.0 and Director.health_multiplier(330) == 7.0
 		and Director.health_multiplier(360) == 10.0 and Director.health_multiplier(420) == 15.0, "new late-game hp steps")
 	var triangle := ContentDB.get_enemy(&"chaser_triangle")
 	var square := ContentDB.get_enemy(&"chaser_square")
 	check(triangle.max_health * Director.health_multiplier(0) == 20.0 and Director.health_multiplier(15) == 1.0, "opening 0.8 hp")
-	check(is_equal_approx(Director.health_multiplier(59.99), 1.0) and is_equal_approx(Director.health_multiplier(60), 1.5), "minute-one hp step")
-	check(is_equal_approx(Director.health_multiplier(120), 2.0) and is_equal_approx(Director.health_multiplier(180), 2.5) and is_equal_approx(Director.health_multiplier(240), 3.5) and is_equal_approx(Director.health_multiplier(270), 5.0) and is_equal_approx(Director.health_multiplier(300), 6.0), "later hp steps")
-	check(is_equal_approx(13.0 * triangle.max_health * Director.health_multiplier(120), 650.0), "high-pressure theoretical hp per second")
+	check(is_equal_approx(Director.health_multiplier(59.99), 1.0) and is_equal_approx(Director.health_multiplier(60), 1.2), "minute-one hp step")
+	check(is_equal_approx(Director.health_multiplier(120), 1.7) and is_equal_approx(Director.health_multiplier(180), 2.5) and is_equal_approx(Director.health_multiplier(240), 3.5) and is_equal_approx(Director.health_multiplier(270), 5.0) and is_equal_approx(Director.health_multiplier(300), 6.0), "later hp steps")
+	check(is_equal_approx(10.0 * triangle.max_health * Director.health_multiplier(120), 425.0), "high-pressure theoretical hp per second")
 	check(is_equal_approx(6.0 * square.max_health * Director.health_multiplier(180), 900.0), "boss phase theoretical hp per second")
 	var world := Node2D.new()
 	add_child(world)
@@ -73,19 +73,19 @@ func _ready() -> void:
 	Director._phase_index = 2
 	Director._process(0.0)
 	enemies = get_tree().get_nodes_in_group("enemies")
-	check(enemies.size() == 23, "high-pressure tick creates thirteen enemies together")
-	if enemies.size() == 23:
+	check(enemies.size() == 20, "high-pressure tick creates ten enemies together")
+	if enemies.size() == 20:
 		var colors := {}
 		var octants := {}
 		var nearest := INF
 		var spread := 0.0
-		for i in range(10, 23):
+		for i in range(10, 20):
 			var enemy: Enemy = enemies[i]
 			colors[enemy.color_index] = true
 			nearest = minf(nearest, enemy.position.distance_to(target.position))
 			var octant := int(fposmod((enemy.position - target.position).angle(), TAU) / (TAU / 8.0)) % 8
 			octants[octant] = true
-			for j in range(10, 23):
+			for j in range(10, 20):
 				spread = maxf(spread, enemy.position.distance_to(enemies[j].position))
 		check(colors.size() >= 2, "surround spawns are not one color")
 		check(nearest >= 380.0, "surround spawns stay outside the player")

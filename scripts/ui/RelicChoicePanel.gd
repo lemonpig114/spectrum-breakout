@@ -11,6 +11,9 @@ var _details: Label
 var _countdown: Label
 var _progress: ProgressBar
 var _take_button: Button
+var _touch_index := -1
+var _touch_ticket := -1
+var _touch_take := false
 var _discard_button: Button
 
 
@@ -84,6 +87,29 @@ func _button(parent: Node, title: String, take: bool) -> Button:
 	return button
 
 
+func _input(event: InputEvent) -> void:
+	if not GameInput.touch_controls_active: return
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if not touch.pressed and touch.index == _touch_index:
+			var valid := visible and _touch_ticket == _ticket and not get_tree().paused and not touch.canceled
+			var button := _take_button if _touch_take else _discard_button
+			var take := _touch_take
+			_touch_index = -1
+			get_viewport().set_input_as_handled()
+			if valid and button.get_global_rect().has_point(touch.position): _choose(take)
+		elif touch.pressed and visible and not get_tree().paused and _card.get_global_rect().has_point(touch.position):
+			if _touch_index < 0 and (_take_button.get_global_rect().has_point(touch.position) or _discard_button.get_global_rect().has_point(touch.position)):
+				_touch_index = touch.index
+				_touch_ticket = _ticket
+				_touch_take = _take_button.get_global_rect().has_point(touch.position)
+			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag and event.index == _touch_index:
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.device == InputEvent.DEVICE_ID_EMULATION and visible and _card.get_global_rect().has_point(event.position):
+		get_viewport().set_input_as_handled()
+
+
 func _consume_card_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		accept_event()
@@ -93,8 +119,10 @@ func _process(delta: float) -> void:
 	if RunState.is_dead or not RunState.is_running or Skills.pending_relic_offers.is_empty():
 		visible = false
 		_ticket = -1
+		_touch_index = -1
 		return
 	if get_tree().paused:
+		_touch_index = -1
 		visible = false
 		return
 	var offer: Dictionary = Skills.pending_relic_offers[0]
@@ -112,6 +140,7 @@ func _process(delta: float) -> void:
 
 
 func _show_offer(offer: Dictionary) -> void:
+	_touch_index = -1
 	var relic := Skills.get_relic(offer.id)
 	if relic == null:
 		Skills.resolve_relic_offer(_ticket, false)
@@ -147,6 +176,7 @@ func _layout_card() -> void:
 func _choose(take: bool) -> void:
 	if not visible or get_tree().paused or RunState.is_dead:
 		return
+	_touch_index = -1
 	Skills.resolve_relic_offer(_ticket, take)
 	if not take:
 		Audio.play(&"ui_click")

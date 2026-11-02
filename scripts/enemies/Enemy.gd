@@ -41,6 +41,17 @@ var _burn_ticks := PackedFloat64Array([0.0, 0.0, 0.0, 0.0])
 var _burn_cursor := 0
 var _burn_pending := 0.0
 var _poison_dps := 0.0
+var element_layers: Dictionary = {}
+var element_reaction_until := 0.0
+var weak_last_color := -1
+var weak_last_damage := 0.0
+var weak_blast_queued := false
+
+func recolor(new_color: int) -> void:
+	color_index = new_color
+	_refresh_healthbar()
+	_request_redraw()
+
 var _dot_bucket := 0
 var _slow := 0.0
 var circle_slow := false
@@ -87,6 +98,7 @@ func _ready() -> void:
 		and not OS.get_cmdline_user_args().has("--no-enemy-batch")
 	_dot_bucket = get_instance_id() % 4
 	EventBus.dot_tick.connect(_on_global_dot_tick)
+	EventBus.element_tick.connect(_on_element_tick)
 	_healthbar = EnemyHealthBar.new()
 	add_child(_healthbar)
 	_healthbar.refresh(health, max_health, radius, RunState.enemy_color_of(color_index))
@@ -318,8 +330,17 @@ func damage_color_at(_point: Vector2) -> int:
 
 func take_damage(context: DamageContext) -> void:
 	var clock := preload("res://scripts/game/CombatProfiler.gd").begin()
+	var original := context.amount
+	var original_elemental := context.elemental_bonus
+	if context.base_damage <= 0: context.base_damage = original
+	var distant := 1.0+Skills.sniper_damage_bonus(global_position)
+	context.amount *= distant
+	context.elemental_bonus *= distant
 	_take_damage_impl(context)
 	Skills.try_michael_execution(context)
+	if is_dead and context.has_tag(&"weakness"): Skills.element_combat.weak_kill(self)
+	context.amount = original
+	context.elemental_bonus = original_elemental
 	preload("res://scripts/game/CombatProfiler.gd").end(&"enemy_damage", clock)
 
 
@@ -330,11 +351,15 @@ func _take_damage_impl(context: DamageContext) -> void:
 	var original_amount := context.amount
 	var original_elemental := context.elemental_bonus
 	_apply_vulnerability_for_attack()
-	var defense_multiplier := (1.0 + vulnerability) * armor_multiplier()
+	var armor := armor_multiplier()
+	if Skills.is_unlocked(&"weak_4") and context.has_tag(&"weakness"):
+		armor = minf(1.0,armor+0.10)
+	var defense_multiplier := (1.0 + vulnerability) * armor
 	context.amount *= defense_multiplier
 	context.elemental_bonus *= defense_multiplier
 	Skills.record_projectile_damage(context, minf(maxf(health, 0.0), context.amount))
 	health -= context.amount
+	Skills.element_combat.on_attack(self,context)
 	if context.has_tag(&"splash"):
 		# 溅射可能同帧命中整群敌人；保留闪白，避免每只都改物理体缩放。
 		_flash = maxf(_flash, 0.55)
@@ -345,7 +370,7 @@ func _take_damage_impl(context: DamageContext) -> void:
 
 	var hit_color := Color(0.88, 0.88, 0.88) if context.color_index < 0 else RunState.color_of(context.color_index)
 	var style := FloatingTextLayer.STYLE_NORMAL
-	if context.has_tag(&"blackhole_explosion"):
+	if context.has_tag(&"element_origin") or context.has_tag(&"blackhole_explosion"):
 		style = FloatingTextLayer.STYLE_BURST
 	elif context.has_tag(&"super_crit"):
 		style = FloatingTextLayer.STYLE_SUPER_CRIT
@@ -416,7 +441,7 @@ func take_true_damage(amount: float, source_key: StringName = &"skill:soul_1") -
 		return
 
 	_apply_vulnerability_for_attack(false)
-	amount *= (1.0 + vulnerability) * armor_multiplier()
+	amount *= (1.0 + vulnerability) * armor_multiplier() * (1.0+Skills.sniper_damage_bonus(global_position))
 	Skills.record_damage(source_key, minf(maxf(health, 0.0), amount))
 	health -= amount
 	_flash = 1.0
@@ -483,8 +508,8 @@ func has_ice() -> bool:
 
 func _refresh_status_icons() -> void:
 	if _healthbar != null:
-		_healthbar.set_statuses(_burn_pending > 0.000001, _poison_dps > 0.0,
-			_ice_time > 0.0, vulnerability > 0.0)
+		_healthbar.set_statuses(_burn_pending > 0.000001 or element_layers.has(ColorType.RED), _poison_dps > 0.0 or element_layers.has(ColorType.GREEN),
+			_ice_time > 0.0 or element_layers.has(ColorType.BLUE), vulnerability > 0.0)
 
 
 func _apply_vulnerability_for_attack(add_stack: bool = true) -> void:
@@ -542,9 +567,14 @@ func _tick_statuses(delta: float) -> void:
 		_refresh_status_icons()
 
 
+func _on_element_tick(bucket: int) -> void:
+	if bucket == _dot_bucket and not is_dead and not element_layers.is_empty():
+		Skills.element_combat.tick(self)
+
+
 func _on_global_dot_tick(bucket: int) -> void:
-	if bucket == _dot_bucket and not is_dead and (_burn_pending > 0.000001 or _poison_dps > 0.0):
-		_apply_dot_tick()
+	if bucket == _dot_bucket and not is_dead:
+		if not is_dead and (_burn_pending > 0.000001 or _poison_dps > 0.0): _apply_dot_tick()
 
 
 ## 灼伤在两秒内每半秒结算一次；中毒每半秒结算半秒的伤害。
@@ -558,7 +588,7 @@ func _apply_dot_tick() -> void:
 	if _hex_rally_time > 0.0:
 		burn_damage = 0.0
 		poison_damage = 0.0
-	var vulnerable_multiplier := 1.0 + vulnerability
+	var vulnerable_multiplier := (1.0 + vulnerability)*(1.0+Skills.sniper_damage_bonus(global_position))
 	burn_damage *= vulnerable_multiplier * armor_multiplier()
 	poison_damage *= vulnerable_multiplier * armor_multiplier()
 	var total := burn_damage + poison_damage
@@ -695,6 +725,7 @@ func _die() -> void:
 	if is_dead:
 		return
 
+	Skills.element_combat.on_death(self)
 	is_dead = true
 	if type_data != null and type_data.behavior == &"explode":
 		# 贴脸自爆与远处击杀使用同一判定，圆波半径直接取资源中的伤害半径。

@@ -1,7 +1,7 @@
 extends Node
 
 ## 真实渲染窗口下截取单把武器的视觉草稿，供美术验收。
-const FORMS := [&"cannon", &"sprite", &"wave", &"scythe"]
+const FORMS := WeaponRuntime.PRIMARY_ORDER
 
 
 func _ready() -> void:
@@ -43,6 +43,16 @@ func _ready() -> void:
 	if fusion != &"":
 		player.weapon.acquire_form(fusion)
 	player.weapon.select_primary(form)
+	if form == &"lightning":
+		main.camera.zoom = Vector2(1.5, 1.5)
+		for i in 3:
+			var enemy := load("res://scenes/enemies/enemy.tscn").instantiate() as Enemy
+			enemy.configure(ContentDB.get_enemy(&"chaser_triangle"), player, ColorType.next(player.color_index))
+			main.world.add_child(enemy)
+			enemy.global_position = player.global_position + Vector2(140+i*90, i%2*30)
+			enemy.health = 10000
+			enemy.max_health = enemy.health
+			enemy.set_physics_process(false)
 	var direction := Vector2.RIGHT
 	if form == &"scythe" and fusion != &"sword":
 		direction = Vector2.UP
@@ -61,6 +71,8 @@ func _ready() -> void:
 		await get_tree().create_timer(0.12).timeout
 	elif form == &"sprite":
 		await get_tree().create_timer(0.38).timeout
+	elif form == &"lightning":
+		await get_tree().create_timer(0.05).timeout
 	else:
 		await get_tree().create_timer(0.10).timeout
 	await RenderingServer.frame_post_draw

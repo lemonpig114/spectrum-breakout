@@ -31,6 +31,7 @@ func _ready() -> void:
 		main.weapon_choice_panel._choose(0)
 	main.player.weapon.acquire_form(&"sword")
 	main.player.weapon.acquire_form(&"boomerang")
+	main.player.weapon.select_primary(&"boomerang")
 	Skills.guardian_shields = 3
 	Skills.color_shield = ColorType.BLUE
 	Skills.soul_kills = 77
@@ -49,6 +50,8 @@ func _ready() -> void:
 	main.player._heavy_timer = 4.7
 	Director._boss_spawned = true
 	Director._merchant_timer = 44.6
+	# Boss 已击败但宝箱还没捡：应随存档一起恢复。
+	main._spawn_boss_chest(Vector2(640, -360))
 	Pickups.clear()
 	Pickups.field._append_item(PickupField.KIND_XP, Vector2(1000, 1000), 17, 0.0)
 	Pickups.field._append_item(PickupField.KIND_GOLD, Vector2(1100, 1000), 23, 0.0)
@@ -87,6 +90,7 @@ func _ready() -> void:
 		"health, position, energy and color are restored")
 	check(main.player.weapon.owned_forms == weapons and Skills.relic_count(&"rare_bond") == 2,
 		"weapons and duplicate relic stacks survive scene recreation")
+	check(main.player.weapon.primary_form == &"boomerang", "explicit main selection survives save and scene recreation")
 	check(is_equal_approx(main.player.weapon.get_final_damage(), damage) and main.player.weapon.stats._modifiers.size() == modifiers,
 		"stat modifiers restore exactly without replaying relic rewards or penalties")
 	check(Skills._energy_buff_mod != null and Skills._dice_damage_mod != null and Skills.dice_roll() == dice_roll,
@@ -100,6 +104,10 @@ func _ready() -> void:
 		"defeated boss stays defeated and merchant schedule is preserved")
 	check(Pickups.field.currency_count() == 2 and RunState.xp == 33 and RunState.gold == -275,
 		"uncollected drops restore on the ground without crediting money or experience")
+	var restored_chests := get_tree().get_nodes_in_group(&"boss_chest")
+	check(restored_chests.size() == 1
+		and (restored_chests[0] as Node2D).global_position.distance_to(Vector2(640, -360)) < 1.0,
+		"pending boss chest respawns at its saved position")
 	# Active boss, unfinished choices and a shop shelf are persistent too.
 	Director._boss_spawned = false
 	var boss := Director.spawn_boss_now(Vector2(900, -400))
@@ -153,6 +161,20 @@ func _ready() -> void:
 	Director.stop()
 	check(main.weapon_choice_panel.visible and main.weapon_choice_panel._choices == weapon_choices,
 		"weapon reward resumes exact candidates without rerolling")
+	main.weapon_choice_panel._choose(0)
+	check(main.weapon_choice_panel._primary_mode, "new reward advances to main-form selection")
+	var owned_before_selection: Array = main.player.weapon.owned_forms.duplicate()
+	check(GameSave.write_run(main) and GameSave.request_continue(), "pending main-form selection saves independently")
+	main.queue_free()
+	await get_tree().process_frame
+	main = load("res://scenes/main.tscn").instantiate()
+	add_child(main)
+	Director.stop()
+	check(main.weapon_choice_panel.visible and main.weapon_choice_panel._primary_mode and main.player.weapon.owned_forms == owned_before_selection,
+		"main-form modal restores without acquiring another weapon")
+	main.weapon_choice_panel._choose(0)
+	check(not main.weapon_choice_panel.visible and main.player.weapon.owned_forms == owned_before_selection,
+		"restored selection commits once without duplicating ownership")
 	GameSave._main = weakref(main)
 	RunState.gold = -123
 	GameSave._notification(NOTIFICATION_APPLICATION_PAUSED)

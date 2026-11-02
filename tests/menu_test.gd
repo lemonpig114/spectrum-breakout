@@ -88,7 +88,7 @@ func _ready() -> void:
 		player != null and is_equal_approx(player.max_health, 3.0)
 			and is_equal_approx(player.stats.get_value(&"move_speed"), 250.0)
 			and is_equal_approx(Skills.xp_multiplier(), 1.2)
-			and Skills.relic_count(&"epic_six_sided_die") == 1,
+			and Skills.relic_count(&"epic_infinite_die") == 1,
 		"selected character stats reach the player"
 	)
 	failures += _check(is_equal_approx(core.damage, 10.0) and Skills.free_rerolls() == 1,

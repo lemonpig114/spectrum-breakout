@@ -28,9 +28,9 @@ func _ready() -> void:
 	_check(Skills.grant_relic(&"rare_ounce_soul") and Skills.soul_kills == 50,
 		"ounce of soul adds fifty")
 	var gold_before := RunState.gold
-	_check(Skills.grant_relic(&"rare_high_bond") and RunState.gold == gold_before - 1000
-		and is_equal_approx(Skills.gold_income(), 12.0),
-		"high bond creates debt and fixed income")
+	_check(Skills.grant_relic(&"rare_high_bond") and RunState.gold == gold_before
+		and is_equal_approx(Skills.gold_income(), 10.0),
+		"high bond grants fixed income with no pickup cost")
 	for _i in 3:
 		Skills.grant_relic(&"rare_bloody_bandage")
 	_check(is_equal_approx(Skills.damage_invuln_bonus(), 3.0)
@@ -74,6 +74,10 @@ func _ready() -> void:
 	_check(Skills.grant_relic(&"epic_water_candle")
 		and is_equal_approx(Director.spawn_rate(0.0), 3.6),
 		"water candle increases real spawn rate")
+	for _i in 4:
+		Skills.grant_relic(&"epic_water_candle")
+	_check(not Skills.grant_relic(&"epic_water_candle"),
+		"water candle caps at five copies")
 	Skills.grant_relic(&"epic_travel_journal")
 	RunState.level = 10
 	RunState.xp = 0
@@ -87,9 +91,9 @@ func _ready() -> void:
 	_check(Skills.grant_relic(&"epic_shield_generator"), "shield generator can be picked")
 	RunState.energy = RunState.max_energy
 	var next_color := ColorType.next(RunState.color_index, 1)
-	_check(RunState.select_color(next_color) and is_equal_approx(RunState.energy, RunState.max_energy - 2.0)
+	_check(RunState.select_color(next_color) and is_equal_approx(RunState.energy, RunState.max_energy - 1.0)
 		and Skills.color_shield == next_color,
-		"switch costs two energy and creates a color shield")
+		"shield generator keeps the normal one-energy switch cost and creates a color shield")
 	var source := Enemy.new()
 	source.color_index = ColorType.next(next_color, 1)
 	_check(not Skills.try_color_shield(source) and Skills.color_shield == next_color,

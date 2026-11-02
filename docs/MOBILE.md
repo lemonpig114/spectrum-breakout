@@ -26,3 +26,5 @@
 - 调试 APK 为 ARM64、清单最低 API 21、目标 API 34、固定横屏；所用 Mobile/Vulkan 渲染器实际应在支持 Vulkan 的 Android 9+ 手机上测试。签名由 `apksigner verify` 确认。此包用于实机测试，不是商店发行包。
 
 - 2026-10-30：v0.2.0，versionCode2，ARM64调试签名APK；保留原包名和签名，加入世界1.3倍相机缩放。实际APK提取的资源通过桌面smoke/menu检查，v1/v2/v3签名有效。下载入口见README。
+
+2026-11-02：非模态遗物拾取条直接处理独立ScreenTouch，按触点编号及奖励ticket确认按钮释放；可一指持续摇杆、另一指拾取/丢弃。移出按钮释放或系统取消不执行，抑制同一触摸模拟鼠标造成双领；MobileControls在识别摇杆前先排除UI区域。桌面鼠标按钮逻辑保留。回归tests/clone_touch_fix_test.tscn -- --mobile-controls-test通过实际Viewport多触点分发验证。
